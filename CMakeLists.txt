@@ -36,6 +36,8 @@ set(SOURCES
     src/camera.c
     src/game.c
     src/engine_random.c
+    src/engine_checkerboard.c
+    src/engine_kingsrow.c
     src/interaction.c
     src/ui.c
     third_party/glad/glad.c

@@ -14,4 +14,9 @@ typedef struct Engine {
 Engine engine_create(EngineType type);
 void engine_destroy(Engine *engine);
 
+// Engine & Wine availability checks
+bool engine_is_wine_available(void);
+bool engine_is_type_available(EngineType type);
+const char *engine_get_type_name(EngineType type);
+
 #endif // ENGINE_H

@@ -23,7 +23,9 @@ typedef enum {
 } GameMode;
 
 typedef enum {
-    ENGINE_TYPE_RANDOM = 0
+    ENGINE_TYPE_RANDOM = 0,
+    ENGINE_TYPE_CHECKERBOARD = 1,
+    ENGINE_TYPE_KINGSROW = 2
 } EngineType;
 
 typedef struct {

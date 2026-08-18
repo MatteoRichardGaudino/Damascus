@@ -1,0 +1,162 @@
+<!doctype html public "-//w3c//dtd html 3.2//en">
+
+<html>
+
+<head>
+<title>Cake 1.89</title>
+<meta name="GENERATOR" content="Arachnophilia 4.0">
+<meta name="FORMATTER" content="Arachnophilia 4.0">
+</head>
+<body leftmargin=0 topmargin=0>
+
+<table cellpadding="10">
+
+<tr><td>
+
+<h3>Cake 1.89f Help</h3>
+
+<h4>Overview</h4>
+
+Cake 1.89f is a checkers engine for CheckerBoard. 
+
+
+If you have trouble running Cake 1.89f, read this document carefully, and if you cannot find
+an answer to your problem, send me a report by email.
+
+<h4>Installation</h4>
+To use Cake 1.89f, you need a working installation of CheckerBoard. Save cake_189f.dll, book.bin and cake189.htm in the engines subdirectory of CheckerBoard, and save egdb64.dll in the CheckerBoard main directory. Select cake_189f.dll as the engine to use in CheckerBoard. 
+<h4>System Requirements</h4>
+Cake can use endgame databases which can be very large and resource-hungry. Since version 1.89, it uses the endgame database driver
+by Ed Gilbert for the first time, which allows it to use Ed's database, the most efficiently compressed and largest databases available for 
+English checkers.
+
+The endgame databases for more than 6 pieces are  large. Here's an overview of aproximate minimum 
+system requirements for running Cake with different sizes of the endgame database:
+<UL>
+<LI>6-piece: 32 MB RAM, 30 MB free HD space
+<LI>7-piece: 64 MB RAM, 240 MB free HD space
+<LI>8-piece: 128 MB RAM, 3.1 GB free HD space
+<LI>9-piece: 512 MB RAM, 6 GB free HD space
+<LI>10-piece: 2048 MB RAM, 93 GB free HD space
+</UL>
+Note that the required RAM is a minimal requirement. More RAM is nearly always better, except of course if you have enough RAM to 
+load the entire database into RAM, then more will not help any more. For example, if you use the 8-piece database, then there is no point in using more than ~3 GB RAM for the endgame database. 
+<h4>Database download</h4>
+Ed's database can be downloaded from his <a href="http://edgilbert.org/EnglishCheckers/KingsRowEnglish.htm">KingsRow English</a>webpage. 
+
+
+<h4>Engine Options</h4>
+In CheckerBoard, you can use the engine options dialog to set the following options of Cake:
+<UL>
+<LI><B>Book</B><BR> choose from 4 different book settings. You can turn the book off entirely, or you can select
+one of 3 book strength levels. When the book is set to "best moves", it will always play the same move in the
+same position, the move it considers to be best. Best means that it has the highest value, and the most moves
+following it. When the book is set to "good moves", it will pick one of the moves with the highest value at
+random, regardless of the depth of the lines. When the book is set to "all kinds of moves", it will play any
+of the moves which are within 10 points of the value of the best move in the position at random. To get maximum
+playing strength, use "best moves". To get more variety of play (and to get a better chance to win a game),
+ use "all kinds of moves". For something in between, use "good moves".
+<LI><B>Memory - Hashtable</B><BR>
+You can set the size of the hashtable from 8 to 2048 MB in powers of 2. The larger the hashtable, the
+faster the program searches to a fixed depth. However, there is a limit of usefulness: The hashtable
+stores value/position pairs of previous searches. If the same position turns up again in the search
+at another place, the program does not have to search again. Cake can store 1 million positions
+in 8MB RAM, or 32 million positions in 256 MB RAM. If you are running the program at a fast level 
+where it does not search many positions for a move, then a large hashtable is a waste of memory. Here's
+an example: When I run Cake on my 2018 Core i7 Laptop, it searches about 4 million nodes per second.
+If I set it to search 5s/move, that means it will search about 20 million positions. Therefore, it needs
+at most 128 to 256 MB of RAM for the hashtable are quite sufficient. This type of calculation overestimates the RAM necessary for the
+hashtable, and you can divide the result by a factor of 2-4, Meaning that for this kind of level, 32 to 64 MB for
+the hashtable is quite sufficient. 
+<LI><B>Memory - Endgame DB</B><BR>
+Since the endgame database can be version big, it may not be possible to be keep all in memory all the time unless you allocate more RAM than the size of the endgame database on the harddisk. If you give it less memory, the program uses a certain
+amount of memory to store recently accessed positions in the endgame database. The more memory it has for this
+database cache, the less it will have to access the harddisk, which is very slow in comparison to the RAM.
+You can set the amount of RAM Cake  will use for the database cache here. Changes in the database
+cache size will only take effect after you restart CheckerBoard. Also, there is a 40MB memory overhead
+that is not included in the reported DB cache size. Example: if your computer has 4 GB RAM, you can set
+the DB cache size to 1024 MB, and the hashtable size to 256 MB. This means that Cake will be using
+1024 + 40 + 256 = 1320 MB RAM. You should never use more RAM than you actually have in your system, else the program
+will slow down to a crawl. CheckerBoard will try to prevent you from doing this.
+<LI><B>All Scores Mode</b><br>
+If this option is checked, Cake will compute the scores for all moves, not just for the best move. In this
+mode, it searches more slowly, but on the other hand you get the scores for all moves. This is very nice if
+you are going over a game looking for blunders or improvements as you get to see the evaluation of all
+moves at once.
+</UL>
+
+<H4>Status Bar Output</H4>
+While it is thinking about a move, Cake will tell you some of the details of it's thinking
+process. A typical output when in book is this:
+
+<PRE>book  23-18 v14 d12   22-17 v8 d8   28-24 v6 d9   22-18 v4 d8   27-24 v0 d9   23-19 v-4 d6   21-17 v-4 d2   
+</PRE>
+which means that there are 7 moves in the opening book. The move 23-18 has a value of +14, and 12 more book
+moves after it in the main line. The move 23-19 has a value of -4 and 6 more moves in the main line. Once out
+of book, the status bar line will look like this:
+
+<PRE>depth 25/43/23.5  time 82.28s  value=56  nodes 61024837  741kN/s  pv 24-20 16-19 32-28  5- 9 27-24  9-14 21-17 14x21 
+</PRE>
+The first 3 numbers report the search depth. 25 is the nominal search depth, 43 the maximal search depth, and 
+23.5 the average search depth. The nominal search depth is the depth Cake attempts to search on this iteration.
+However, some lines are searched deeper because of selective extensions, and other lines are searched less
+deep because of pruning. The next number is the search time in seconds. Next, the value of the position.
+The higher this is, the better Cake thinks the position is for the side to move. 100 points correspond to
+winning a man, 0 means an equal position. Values around +/-1000 indicate database wins/losses. Next is the
+number of positions Cake searched, then the number of positions it searched per second. Here, it searched
+741kN/s or 741'000 positions per second. The faster your computer is, the higher this number will be. Finally,
+it prints the first 8 moves of the main line of it's analysis. For technical reasons I can't explain here,
+this main line may not be correct, but it is most of the time (for experts: it's not easy to get a main line
+from MTD searches).
+
+<h4>The Opening Book</h4>
+
+The opening book of Cake has been recomputed for Cake 1.89f. It is the result of automated analysis on all 216 possible 
+3-move openings. It was computed by Cake 1.89f in about 3 weeks and replaces the opening book that was computed back in 2001
+by Cake Sans Souci. Since Cake 1.89f is so much stronger than Cake Sans Souci was, the new opening book is naturally also much better. 
+ Since there
+is no reference to published play at all in this book, it probably also contains some original moves
+that are not considered in published play.
+
+<h4>The Endgame Database</h4>
+For Cake 1.89, I have replaced my own endgame database with Ed Gilbert's more efficiently compressed database; as an additional bonus it is also offers a 9- and 10-piece endgame database. Ed's database driver can also work with the Chinook database or my Cake database, that I computed back in 2001, up to 8 pieces. However, I suggest
+you get Ed's database because it has the best compression and uses the computer's RAM most efficiently. 
+</td></tr></table>
+<table cellpadding="10"><tr><td valign="top">
+
+<h4>Credits</h4>
+
+All code in Cake is original code. But a lot of other people have been important in the development 
+of Cake, first and foremost Ed Gilbert with whom I have had a friendly rivalry 
+for over 20 years. He kept improving his KingsRow engine and by trying to keep up with each other 
+we both created much stronger engines than we could have on our own. Also, as of Cake 1.89 I now use his
+endgame database driver and his endgame database. Ed also helped me to understand how
+to optimize a pattern-based evaluation with potentially hundreds of thousands of parameters; and he explained
+to me how to efficiently index these patterns with magic multipliers - thanks, Ed!
+<p>Other people worth mentioning are Jonathan Schaeffer and his Chinook project which 
+got me interested in checkers programming in the 
+first place. I also used the Chinook endgame database for a long time until I computed my own endgame 
+database. In the early days, Nelson Castillo and his Dama program provided me with some competition. 
+Thomas Lincke computed 
+the first opening book for Cake and introduced me to drop-out-expansion. Ed Trice called me 
+"denser than a neutron star about to collapse into a black hole", which made me compute the 
+8-piece database. George Miller kindly gave me a copy of DEO's Encyclopedia of Checkers, 
+from which I learned a little something about checkers. George Miller, Mac Banks and 
+Gerry Lopez made the las Vegas computer world championship possible, which made me work 
+harder on Cake than ever before, both before and after the event. Last but not least, 
+whenever I was tired of programming, I got a little help from the little Gecko in my office! 
+</td>
+<td><IMG src="gecko.jpg">
+</td></tr>
+<tr><td colspan="2">
+<hr>
+<address>
+Updated by Martin Fierz on June 20th 2021. Feedback to martin at fierz.ch
+</address>
+</td></tr>
+</table>
+
+
+</body>
+
+</html>

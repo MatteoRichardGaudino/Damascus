@@ -20,6 +20,12 @@ typedef struct {
     // UI layout bounds
     int win_w;
     int win_h;
+    
+    // AI Response Times for HUD labels
+    double last_white_ai_time;
+    double last_black_ai_time;
+    bool has_white_ai_time;
+    bool has_black_ai_time;
 } UIContext;
 
 void ui_init(UIContext *ui);

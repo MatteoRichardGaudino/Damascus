@@ -1,4 +1,5 @@
 #include "ui.h"
+#include "engine.h"
 #include <glad/glad.h>
 #include <cglm/cglm.h>
 #include <stdio.h>
@@ -274,6 +275,11 @@ void ui_init(UIContext *ui) {
     ui->win_w = 1024;
     ui->win_h = 768;
     
+    ui->last_white_ai_time = 0.0;
+    ui->last_black_ai_time = 0.0;
+    ui->has_white_ai_time = false;
+    ui->has_black_ai_time = false;
+    
     init_font_texture();
 }
 
@@ -352,14 +358,29 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             ui_add_quad(start_x + 240.0f, eng_y + 20.0f, col_btn_w, 40.0f, *col_b);
             ui_add_text_centered("GIOCA COME NERO", start_x + 240.0f + col_btn_w * 0.5f, eng_y + 40.0f, 1.1f, text_white);
             
-            ui_add_text("ENGINE CPU AVVERSARIO: RANDOM", start_x, eng_y + 75.0f, 1.1f, text_sub);
+            char cpu_str[128];
+            snprintf(cpu_str, sizeof(cpu_str), "ENGINE CPU: %s", engine_get_type_name(ui->selected_black_engine));
+            ui_add_quad(start_x, eng_y + 70.0f, 465.0f, 35.0f, btn_normal);
+            ui_add_text_centered(cpu_str, start_x + 232.0f, eng_y + 87.0f, 1.1f, text_gold);
         } else if (ui->selected_mode == MODE_CPUVSCPU) {
             ui_add_text("SELEZIONA ENGINE CPU:", start_x, eng_y, 1.1f, text_white);
-            ui_add_quad(start_x, eng_y + 22.0f, 220.0f, 40.0f, btn_normal);
-            ui_add_text_centered("CPU 1: RANDOM", start_x + 110.0f, eng_y + 42.0f, 1.2f, text_gold);
             
-            ui_add_quad(start_x + 245.0f, eng_y + 22.0f, 220.0f, 40.0f, btn_normal);
-            ui_add_text_centered("CPU 2: RANDOM", start_x + 245.0f + 110.0f, eng_y + 42.0f, 1.2f, text_gold);
+            char e1_str[64], e2_str[64];
+            snprintf(e1_str, sizeof(e1_str), "CPU 1: %s", engine_get_type_name(ui->selected_white_engine));
+            snprintf(e2_str, sizeof(e2_str), "CPU 2: %s", engine_get_type_name(ui->selected_black_engine));
+            
+            ui_add_quad(start_x, eng_y + 22.0f, 225.0f, 40.0f, btn_normal);
+            ui_add_text_centered(e1_str, start_x + 112.0f, eng_y + 42.0f, 1.0f, text_gold);
+            
+            ui_add_quad(start_x + 240.0f, eng_y + 22.0f, 225.0f, 40.0f, btn_normal);
+            ui_add_text_centered(e2_str, start_x + 240.0f + 112.0f, eng_y + 42.0f, 1.0f, text_gold);
+        }
+        
+        // System status banner
+        if (engine_is_type_available(ENGINE_TYPE_KINGSROW)) {
+            ui_add_text("MOTORI DISPONIBILI: RANDOM, CHECKERBOARD (NATIVO), KINGSROW (BRIDGE)", start_x, p_y + 325.0f, 0.95f, text_sub);
+        } else {
+            ui_add_text("MOTORI DISPONIBILI: RANDOM, CHECKERBOARD (NATIVO MARTIN FIERZ)", start_x, p_y + 325.0f, 0.95f, text_sub);
         }
         
         // Start Game Button
@@ -377,6 +398,52 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
         
         const char *turn_str = (game->current_player == PLAYER_WHITE) ? "TURNO: BIANCO" : "TURNO: NERO";
         ui_add_text_centered(turn_str, 145.0f, 45.0f, 1.4f, text_gold);
+        
+        // White Player / AI Response Time Badge
+        float w_lbl_x = 285.0f;
+        float lbl_w = 210.0f;
+        float lbl_h = 50.0f;
+        ui_add_quad(w_lbl_x - 2.0f, 18.0f, lbl_w + 4.0f, lbl_h + 4.0f, border_color);
+        ui_add_quad(w_lbl_x, 20.0f, lbl_w, lbl_h, glass_panel);
+
+        bool white_is_ai = (game->mode == MODE_CPUVSCPU) || (game->mode == MODE_1PLAYER && game->human_player != PLAYER_WHITE);
+        if (white_is_ai) {
+            char title_str[64];
+            snprintf(title_str, sizeof(title_str), "BIANCO (%s)", engine_get_type_name(game->white_engine));
+            char val_str[64];
+            if (ui->has_white_ai_time) {
+                snprintf(val_str, sizeof(val_str), "TEMPO: %.2fs", ui->last_white_ai_time);
+            } else {
+                snprintf(val_str, sizeof(val_str), "TEMPO: --");
+            }
+            ui_add_text_centered(title_str, w_lbl_x + lbl_w * 0.5f, 34.0f, 0.95f, text_sub);
+            ui_add_text_centered(val_str, w_lbl_x + lbl_w * 0.5f, 54.0f, 1.1f, text_gold);
+        } else {
+            ui_add_text_centered("BIANCO", w_lbl_x + lbl_w * 0.5f, 34.0f, 0.95f, text_sub);
+            ui_add_text_centered("UMANO", w_lbl_x + lbl_w * 0.5f, 54.0f, 1.1f, text_white);
+        }
+
+        // Black Player / AI Response Time Badge
+        float b_lbl_x = 510.0f;
+        ui_add_quad(b_lbl_x - 2.0f, 18.0f, lbl_w + 4.0f, lbl_h + 4.0f, border_color);
+        ui_add_quad(b_lbl_x, 20.0f, lbl_w, lbl_h, glass_panel);
+
+        bool black_is_ai = (game->mode == MODE_CPUVSCPU) || (game->mode == MODE_1PLAYER && game->human_player != PLAYER_BLACK);
+        if (black_is_ai) {
+            char title_str[64];
+            snprintf(title_str, sizeof(title_str), "NERO (%s)", engine_get_type_name(game->black_engine));
+            char val_str[64];
+            if (ui->has_black_ai_time) {
+                snprintf(val_str, sizeof(val_str), "TEMPO: %.2fs", ui->last_black_ai_time);
+            } else {
+                snprintf(val_str, sizeof(val_str), "TEMPO: --");
+            }
+            ui_add_text_centered(title_str, b_lbl_x + lbl_w * 0.5f, 34.0f, 0.95f, text_sub);
+            ui_add_text_centered(val_str, b_lbl_x + lbl_w * 0.5f, 54.0f, 1.1f, text_gold);
+        } else {
+            ui_add_text_centered("NERO", b_lbl_x + lbl_w * 0.5f, 34.0f, 0.95f, text_sub);
+            ui_add_text_centered("UMANO", b_lbl_x + lbl_w * 0.5f, 54.0f, 1.1f, text_white);
+        }
         
         // Top Right Menu Button
         float menu_btn_x = (float)ui->win_w - 180.0f;
@@ -459,6 +526,31 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
                 ui->selected_human_color = PLAYER_BLACK;
                 return true;
             }
+
+            // CPU Engine Selection button in 1Player mode
+            if (point_in_rect(mouse_x, mouse_y, start_x, eng_y + 70.0f, 465.0f, 35.0f)) {
+                ui->selected_black_engine = (ui->selected_black_engine + 1) % 3;
+                if (!engine_is_type_available(ui->selected_black_engine)) {
+                    ui->selected_black_engine = ENGINE_TYPE_RANDOM;
+                }
+                return true;
+            }
+        } else if (ui->selected_mode == MODE_CPUVSCPU) {
+            float eng_y = p_y + 195.0f;
+            if (point_in_rect(mouse_x, mouse_y, start_x, eng_y + 22.0f, 225.0f, 40.0f)) {
+                ui->selected_white_engine = (ui->selected_white_engine + 1) % 3;
+                if (!engine_is_type_available(ui->selected_white_engine)) {
+                    ui->selected_white_engine = ENGINE_TYPE_RANDOM;
+                }
+                return true;
+            }
+            if (point_in_rect(mouse_x, mouse_y, start_x + 240.0f, eng_y + 22.0f, 225.0f, 40.0f)) {
+                ui->selected_black_engine = (ui->selected_black_engine + 1) % 3;
+                if (!engine_is_type_available(ui->selected_black_engine)) {
+                    ui->selected_black_engine = ENGINE_TYPE_RANDOM;
+                }
+                return true;
+            }
         }
         
         // Start Game Button
@@ -468,6 +560,10 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
         
         if (point_in_rect(mouse_x, mouse_y, start_btn_x, start_btn_y, start_btn_w, 55.0f)) {
             ui->state = UI_STATE_PLAYING;
+            ui->has_white_ai_time = false;
+            ui->has_black_ai_time = false;
+            ui->last_white_ai_time = 0.0;
+            ui->last_black_ai_time = 0.0;
             game_init(game, ui->selected_mode, ui->selected_human_color, ui->selected_white_engine, ui->selected_black_engine);
             return true;
         }
@@ -491,6 +587,10 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
             float r_y = o_y + 135.0f;
             
             if (point_in_rect(mouse_x, mouse_y, r_x, r_y, r_w, r_h)) {
+                ui->has_white_ai_time = false;
+                ui->has_black_ai_time = false;
+                ui->last_white_ai_time = 0.0;
+                ui->last_black_ai_time = 0.0;
                 game_init(game, ui->selected_mode, ui->selected_human_color, ui->selected_white_engine, ui->selected_black_engine);
                 return true;
             }

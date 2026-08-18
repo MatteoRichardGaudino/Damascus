@@ -92,6 +92,11 @@ int main(void) {
             if (handled_by_ui && ui.state == UI_STATE_PLAYING && prev_state == UI_STATE_MAIN_MENU) {
                 Player view_player = (game.mode == MODE_1PLAYER) ? game.human_player : PLAYER_WHITE;
                 camera_start_game_anim(&cam, view_player);
+
+                engine_destroy(&white_engine);
+                engine_destroy(&black_engine);
+                white_engine = engine_create(game.white_engine);
+                black_engine = engine_create(game.black_engine);
             } else if (handled_by_ui && ui.state == UI_STATE_MAIN_MENU && prev_state == UI_STATE_PLAYING) {
                 camera_reset_menu_anim(&cam);
             }
@@ -197,11 +202,25 @@ int main(void) {
             }
             
             if (is_cpu_turn && active_engine) {
-                float delay = (game.mode == MODE_CPUVSCPU) ? 0.35f : 0.5f;
+                float delay = (game.mode == MODE_CPUVSCPU) ? 0.20f : 0.35f;
                 
                 if (current_time - last_cpu_move_time >= delay) {
+                    Player moving_player = game.current_player;
+                    double ai_start = glfwGetTime();
                     Move cpu_move = active_engine->get_move(active_engine->internal_state, &game);
+                    double ai_elapsed = glfwGetTime() - ai_start;
+
+                    if (moving_player == PLAYER_WHITE) {
+                        ui.last_white_ai_time = ai_elapsed;
+                        ui.has_white_ai_time = true;
+                    } else {
+                        ui.last_black_ai_time = ai_elapsed;
+                        ui.has_black_ai_time = true;
+                    }
+
                     if (cpu_move.from_row >= 0) {
+                        double anim_start = glfwGetTime();
+
                         // Trigger 3D jumping piece arc animation for CPU
                         piece_anim.active = true;
                         piece_anim.from_row = cpu_move.from_row;
@@ -209,7 +228,7 @@ int main(void) {
                         piece_anim.to_row = cpu_move.to_row;
                         piece_anim.to_col = cpu_move.to_col;
                         piece_anim.piece_type = game.board[cpu_move.from_row][cpu_move.from_col];
-                        piece_anim.start_time = current_time;
+                        piece_anim.start_time = anim_start;
                         piece_anim.move_duration = 0.30;
                         piece_anim.capture_duration = 0.35;
                         
@@ -234,7 +253,7 @@ int main(void) {
                         game.selected_row = -1;
                         game.selected_col = -1;
                     }
-                    last_cpu_move_time = current_time;
+                    last_cpu_move_time = glfwGetTime();
                 }
             }
         }
