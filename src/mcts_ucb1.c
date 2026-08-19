@@ -5,6 +5,7 @@
 ______________________________________________________________________________*/
 
 #include "mcts_ucb1.h"
+#include "wld_db.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,6 +64,7 @@ static uint32_t create_root_node(void) {
 }
 
 void engine_mcts_ucb1_init(void **state) {
+    wld_db_init();
     MCTSEngineState *st = (MCTSEngineState*)malloc(sizeof(MCTSEngineState));
     if (!st) {
         *state = NULL;
@@ -114,13 +116,25 @@ static bool boards_equal(const Board *a, const Board *b) {
            (a->black_kings == b->black_kings);
 }
 
-// Rollout evaluation cutoff
+// Rollout evaluation cutoff with WLD tablebase integration
 static float evaluate_rollout_terminal(const GameState *sim_state, Player ai_player) {
     if (sim_state->is_game_over) {
         if (sim_state->winner == ai_player) {
             return 1.0f; // Win
         } else {
             return 0.0f; // Loss
+        }
+    }
+
+    // Exact Endgame Tablebase Probe (<= 4 pieces)
+    if (wld_db_is_endgame(&sim_state->board)) {
+        WLDValue wld = wld_db_probe(sim_state);
+        if (wld == WLD_WIN_WHITE) {
+            return (ai_player == PLAYER_WHITE) ? 1.0f : 0.0f;
+        } else if (wld == WLD_WIN_BLACK) {
+            return (ai_player == PLAYER_BLACK) ? 1.0f : 0.0f;
+        } else if (wld == WLD_DRAW) {
+            return 0.5f;
         }
     }
     
@@ -332,6 +346,12 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
         GameState rollout_state = curr_state;
         int rollout_depth = 0;
         while (!rollout_state.is_game_over && rollout_depth < MCTS_MAX_ROLLOUT_DEPTH) {
+            if (wld_db_is_endgame(&rollout_state.board)) {
+                WLDValue wld = wld_db_probe(&rollout_state);
+                if (wld != WLD_UNKNOWN) {
+                    break;
+                }
+            }
             MoveList ml = *game_get_valid_moves(&rollout_state);
             if (ml.count == 0) {
                 rollout_state.is_game_over = true;

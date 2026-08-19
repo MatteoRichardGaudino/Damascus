@@ -15,3 +15,9 @@ CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 Makefile
+
+# WLD Endgame Database large binaries
+download/
+*.cpr1
+*.idx1
+third_party/engines/kingsrow_italian/app/db/

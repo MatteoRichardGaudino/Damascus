@@ -39,6 +39,7 @@ set(SOURCES
     src/engine_checkerboard.c
     src/engine_kingsrow.c
     src/mcts_ucb1.c
+    src/wld_db.c
     src/interaction.c
     src/ui.c
     third_party/glad/glad.c
