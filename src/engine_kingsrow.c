@@ -258,9 +258,13 @@ static bool start_kingsrow_process(KingsrowEngineState *ks) {
 
     char reply[256] = "";
     int fd_read = fileno(ks->stream_out);
-    for (int attempts = 0; attempts < 5; attempts++) {
+    bool got_ready = false;
+    bool got_pong = false;
+    for (int attempts = 0; attempts < 10; attempts++) {
         if (read_line_with_timeout(fd_read, reply, sizeof(reply), 4000)) {
-            if (strncmp(reply, "PONG", 4) == 0 || strncmp(reply, "READY", 5) == 0) {
+            if (strncmp(reply, "READY", 5) == 0) got_ready = true;
+            if (strncmp(reply, "PONG", 4) == 0) got_pong = true;
+            if (got_ready && got_pong) {
                 ks->is_connected = true;
                 return true;
             }
@@ -359,13 +363,17 @@ Move engine_kingsrow_get_move(void *state, const GameState *game) {
     char response[1024] = "";
     int fd_read = fileno(ks->stream_out);
     bool got_move = false;
-    while (read_line_with_timeout(fd_read, response, sizeof(response), (int)(maxtime * 1000) + 3500)) {
+    while (read_line_with_timeout(fd_read, response, sizeof(response), (int)(maxtime * 1000) + 6000)) {
         if (strncmp(response, "MOVE ", 5) == 0) {
             got_move = true;
             break;
         }
     }
-    if (!got_move) return MOVE_NONE;
+    if (!got_move) {
+        const MoveList *fallback = game_get_valid_moves(game);
+        if (fallback->count > 0) return fallback->moves[0];
+        return MOVE_NONE;
+    }
 #endif
 
     // Parse response format: "MOVE <res> <jumps> <from_x> <from_y> <to_x> <to_y> ..."
@@ -396,6 +404,8 @@ Move engine_kingsrow_get_move(void *state, const GameState *game) {
         if (valid_moves->count > 0) return valid_moves->moves[0];
     }
 
+    const MoveList *valid_moves = game_get_valid_moves(game);
+    if (valid_moves->count > 0) return valid_moves->moves[0];
     return MOVE_NONE;
 }
 

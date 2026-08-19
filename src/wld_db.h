@@ -12,12 +12,18 @@ typedef enum {
     WLD_DRAW = 3
 } WLDValue;
 
-// Initialize the native retrograde tablebase for <= 4 piece endgames
+#define WLD_DB_DEFAULT_PATH "data/damascus_wld.bin"
+
+// Initialize the native WLD tablebase (loads from binary if present, otherwise solves and saves)
 void wld_db_init(void);
 
-// Query if a position is in the WLD database (<= 4 pieces)
-// Returns WLD_UNKNOWN if not in tablebase (> 4 pieces)
+// Query if a position is in the WLD database (<= 5 pieces)
+// Returns WLD_UNKNOWN if not in tablebase (> 5 pieces)
 WLDValue wld_db_probe(const GameState *game);
+
+// Save and Load binary tablebase
+bool wld_db_save(const char *filepath);
+bool wld_db_load(const char *filepath);
 
 // Helper to check if piece count is within tablebase range
 static inline bool wld_db_is_endgame(const Board *b) {
@@ -25,7 +31,7 @@ static inline bool wld_db_is_endgame(const Board *b) {
                 __builtin_popcount(b->white_kings) + 
                 __builtin_popcount(b->black_men) + 
                 __builtin_popcount(b->black_kings);
-    return count <= 4;
+    return count <= 5;
 }
 
 #endif // WLD_DB_H
