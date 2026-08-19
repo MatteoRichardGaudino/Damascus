@@ -2,6 +2,52 @@
 #include <string.h>
 #include <stdlib.h>
 
+// Precomputed geometric lookup tables for 32 dark squares (4 directions)
+// Dir 0: Up-Right (+1 row, +1 col)
+// Dir 1: Up-Left  (+1 row, -1 col)
+// Dir 2: Down-Right (-1 row, +1 col)
+// Dir 3: Down-Left  (-1 row, -1 col)
+static int8_t s_adj[32][4];
+static int8_t s_jump_dest[32][4];
+static int8_t s_jump_mid[32][4];
+static bool s_tables_initialized = false;
+
+// Statically allocated MoveList (allocated once for memory efficiency)
+static MoveList g_move_list;
+
+static void init_tables(void) {
+    if (s_tables_initialized) return;
+    
+    for (int sq = 0; sq < 32; sq++) {
+        int r = SQ_TO_ROW(sq);
+        int c = SQ_TO_COL(sq);
+        
+        int dr[4] = { 1,  1, -1, -1 };
+        int dc[4] = { 1, -1,  1, -1 };
+        
+        for (int d = 0; d < 4; d++) {
+            int nr = r + dr[d];
+            int nc = c + dc[d];
+            if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                s_adj[sq][d] = (int8_t)ROW_COL_TO_SQ(nr, nc);
+            } else {
+                s_adj[sq][d] = -1;
+            }
+            
+            int jr = r + 2 * dr[d];
+            int jc = c + 2 * dc[d];
+            if (jr >= 0 && jr < 8 && jc >= 0 && jc < 8) {
+                s_jump_dest[sq][d] = (int8_t)ROW_COL_TO_SQ(jr, jc);
+                s_jump_mid[sq][d] = (int8_t)ROW_COL_TO_SQ(nr, nc);
+            } else {
+                s_jump_dest[sq][d] = -1;
+                s_jump_mid[sq][d] = -1;
+            }
+        }
+    }
+    s_tables_initialized = true;
+}
+
 bool is_piece_white(PieceType piece) {
     return piece == PIECE_WHITE_PAWN || piece == PIECE_WHITE_DAMA;
 }
@@ -15,14 +61,25 @@ bool is_piece_dama(PieceType piece) {
 }
 
 bool game_is_dark_tile(int row, int col) {
-    return (row + col) % 2 == 1;
+    return (row + col) % 2 == 0;
 }
 
 bool game_is_valid_coord(int row, int col) {
     return row >= 0 && row < 8 && col >= 0 && col < 8;
 }
 
+PieceType board_get_piece_at(const Board *board, int sq) {
+    if (sq < 0 || sq > 31) return PIECE_NONE;
+    uint32_t mask = 1U << sq;
+    if (board->white_men & mask) return PIECE_WHITE_PAWN;
+    if (board->white_kings & mask) return PIECE_WHITE_DAMA;
+    if (board->black_men & mask) return PIECE_BLACK_PAWN;
+    if (board->black_kings & mask) return PIECE_BLACK_DAMA;
+    return PIECE_NONE;
+}
+
 void game_init(GameState *game, GameMode mode, Player human_player, EngineType white_engine, EngineType black_engine) {
+    init_tables();
     memset(game, 0, sizeof(GameState));
     game->mode = mode;
     game->human_player = human_player;
@@ -33,227 +90,302 @@ void game_init(GameState *game, GameMode mode, Player human_player, EngineType w
     game->selected_col = -1;
     game->is_game_over = false;
     
-    // Set up Italian Checkers initial board
-    // White pieces at rows 0, 1, 2 on dark tiles
-    for (int r = 0; r < 3; r++) {
-        for (int c = 0; c < 8; c++) {
-            if (game_is_dark_tile(r, c)) {
-                game->board[r][c] = PIECE_WHITE_PAWN;
-            }
-        }
-    }
-    
-    // Black pieces at rows 5, 6, 7 on dark tiles
-    for (int r = 5; r < 8; r++) {
-        for (int c = 0; c < 8; c++) {
-            if (game_is_dark_tile(r, c)) {
-                game->board[r][c] = PIECE_BLACK_PAWN;
-            }
-        }
-    }
+    // Initial Italian Checkers 128-bit bitboard setup:
+    // White pieces at rows 0, 1, 2 (sq 0..11 -> bits 0..11)
+    game->board.white_men = 0x00000FFFU;
+    game->board.white_kings = 0;
+    // Black pieces at rows 5, 6, 7 (sq 20..31 -> bits 20..31)
+    game->board.black_men = 0xFFF00000U;
+    game->board.black_kings = 0;
 }
 
-static void evaluate_captures_for_piece(const GameState *game, int r, int c, Move *captures, int *count, int max_moves) {
-    PieceType p = game->board[r][c];
-    if (p == PIECE_NONE) return;
-    
-    Player cur = game->current_player;
-    if (cur == PLAYER_WHITE && !is_piece_white(p)) return;
-    if (cur == PLAYER_BLACK && !is_piece_black(p)) return;
+const MoveList* game_get_valid_moves(const GameState *game) {
+    init_tables();
+    g_move_list.count = 0;
+    if (!game || game->is_game_over) return &g_move_list;
 
-    bool is_dama = is_piece_dama(p);
-    
-    // Direction vectors for diagonals
-    int dr[4], dc[4];
-    int dir_count = 0;
-    
-    if (is_dama) {
-        dr[0] = 1;  dc[0] = 1;
-        dr[1] = 1;  dc[1] = -1;
-        dr[2] = -1; dc[2] = 1;
-        dr[3] = -1; dc[3] = -1;
-        dir_count = 4;
-    } else {
-        // Pawn moves forward only
-        // White moves UP (+1 row), Black moves DOWN (-1 row)
-        int forward = (cur == PLAYER_WHITE) ? 1 : -1;
-        dr[0] = forward; dc[0] = 1;
-        dr[1] = forward; dc[1] = -1;
-        dir_count = 2;
-    }
-    
-    for (int i = 0; i < dir_count; i++) {
-        int mid_r = r + dr[i];
-        int mid_c = c + dc[i];
-        int land_r = r + 2 * dr[i];
-        int land_c = c + 2 * dc[i];
-        
-        if (game_is_valid_coord(mid_r, mid_c) && game_is_valid_coord(land_r, land_c)) {
-            PieceType enemy = game->board[mid_r][mid_c];
-            PieceType landing = game->board[land_r][land_c];
+    const Board *b = &game->board;
+    Player player = game->current_player;
+    uint32_t occ = BOARD_OCCUPIED(*b);
+    uint32_t free_mask = ~occ;
+
+    // Separate captures buffer to filter according to Italian Checkers rules
+    uint16_t captures[32];
+    uint8_t capture_count = 0;
+    bool has_dama_capture = false;
+
+    if (player == PLAYER_WHITE) {
+        // White Pawns captures (Up-Right = dir 0, Up-Left = dir 1)
+        // Rule: White Pawns can ONLY capture Black Pawns (NOT Black Kings)
+        uint32_t my_men = b->white_men;
+        while (my_men) {
+            int sq = __builtin_ctz(my_men);
+            my_men &= my_men - 1; // Clear lowest set bit
             
-            bool is_enemy = (cur == PLAYER_WHITE) ? is_piece_black(enemy) : is_piece_white(enemy);
-            
-            // Italian Rule: Pawn CANNOT capture a Dama
-            if (!is_dama && is_piece_dama(enemy)) {
-                is_enemy = false;
+            for (int d = 0; d < 2; d++) {
+                int mid = s_jump_mid[sq][d];
+                int dest = s_jump_dest[sq][d];
+                if (dest >= 0 && (free_mask & (1U << dest))) {
+                    // Check if mid contains enemy pawn
+                    if (b->black_men & (1U << mid)) {
+                        bool is_prom = (dest >= 28);
+                        Move m = MOVE_CREATE(sq, dest, 0, is_prom ? 1 : 0, 1);
+                        if (capture_count < 32) {
+                            captures[capture_count++] = m;
+                        }
+                    }
+                }
             }
+        }
+
+        // White Kings captures (All 4 directions: dir 0..3)
+        // Rule: White Kings can capture any Black piece (men or kings)
+        uint32_t my_kings = b->white_kings;
+        uint32_t enemy_all = b->black_men | b->black_kings;
+        while (my_kings) {
+            int sq = __builtin_ctz(my_kings);
+            my_kings &= my_kings - 1;
             
-            if (is_enemy && landing == PIECE_NONE) {
-                if (*count < max_moves) {
-                    Move m;
-                    m.from_row = r;
-                    m.from_col = c;
-                    m.to_row = land_r;
-                    m.to_col = land_c;
-                    m.captured_row = mid_r;
-                    m.captured_col = mid_c;
-                    m.captured_type = enemy;
-                    captures[(*count)++] = m;
+            for (int d = 0; d < 4; d++) {
+                int mid = s_jump_mid[sq][d];
+                int dest = s_jump_dest[sq][d];
+                if (dest >= 0 && (free_mask & (1U << dest))) {
+                    if (enemy_all & (1U << mid)) {
+                        Move m = MOVE_CREATE(sq, dest, 1, 0, 1);
+                        has_dama_capture = true;
+                        if (capture_count < 32) {
+                            captures[capture_count++] = m;
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        // Black Pawns captures (Down-Right = dir 2, Down-Left = dir 3)
+        // Rule: Black Pawns can ONLY capture White Pawns (NOT White Kings)
+        uint32_t my_men = b->black_men;
+        while (my_men) {
+            int sq = __builtin_ctz(my_men);
+            my_men &= my_men - 1;
+            
+            for (int d = 2; d < 4; d++) {
+                int mid = s_jump_mid[sq][d];
+                int dest = s_jump_dest[sq][d];
+                if (dest >= 0 && (free_mask & (1U << dest))) {
+                    if (b->white_men & (1U << mid)) {
+                        bool is_prom = (dest <= 3);
+                        Move m = MOVE_CREATE(sq, dest, 0, is_prom ? 1 : 0, 1);
+                        if (capture_count < 32) {
+                            captures[capture_count++] = m;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Black Kings captures (All 4 directions: dir 0..3)
+        uint32_t my_kings = b->black_kings;
+        uint32_t enemy_all = b->white_men | b->white_kings;
+        while (my_kings) {
+            int sq = __builtin_ctz(my_kings);
+            my_kings &= my_kings - 1;
+            
+            for (int d = 0; d < 4; d++) {
+                int mid = s_jump_mid[sq][d];
+                int dest = s_jump_dest[sq][d];
+                if (dest >= 0 && (free_mask & (1U << dest))) {
+                    if (enemy_all & (1U << mid)) {
+                        Move m = MOVE_CREATE(sq, dest, 1, 0, 1);
+                        has_dama_capture = true;
+                        if (capture_count < 32) {
+                            captures[capture_count++] = m;
+                        }
+                    }
                 }
             }
         }
     }
-}
 
-static void evaluate_simple_moves_for_piece(const GameState *game, int r, int c, Move *moves, int *count, int max_moves) {
-    PieceType p = game->board[r][c];
-    if (p == PIECE_NONE) return;
-    
-    Player cur = game->current_player;
-    if (cur == PLAYER_WHITE && !is_piece_white(p)) return;
-    if (cur == PLAYER_BLACK && !is_piece_black(p)) return;
-
-    bool is_dama = is_piece_dama(p);
-    int dr[4], dc[4];
-    int dir_count = 0;
-    
-    if (is_dama) {
-        dr[0] = 1;  dc[0] = 1;
-        dr[1] = 1;  dc[1] = -1;
-        dr[2] = -1; dc[2] = 1;
-        dr[3] = -1; dc[3] = -1;
-        dir_count = 4;
-    } else {
-        int forward = (cur == PLAYER_WHITE) ? 1 : -1;
-        dr[0] = forward; dc[0] = 1;
-        dr[1] = forward; dc[1] = -1;
-        dir_count = 2;
-    }
-    
-    for (int i = 0; i < dir_count; i++) {
-        int nr = r + dr[i];
-        int nc = c + dc[i];
-        
-        if (game_is_valid_coord(nr, nc) && game->board[nr][nc] == PIECE_NONE) {
-            if (*count < max_moves) {
-                Move m;
-                m.from_row = r;
-                m.from_col = c;
-                m.to_row = nr;
-                m.to_col = nc;
-                m.captured_row = -1;
-                m.captured_col = -1;
-                m.captured_type = PIECE_NONE;
-                moves[(*count)++] = m;
-            }
-        }
-    }
-}
-
-int game_get_valid_moves(const GameState *game, Move *out_moves, int max_moves) {
-    if (game->is_game_over) return 0;
-
-    Move captures[128];
-    int capture_count = 0;
-    
-    // First check for captures (captures are mandatory in Italian Checkers)
-    for (int r = 0; r < 8; r++) {
-        for (int c = 0; c < 8; c++) {
-            evaluate_captures_for_piece(game, r, c, captures, &capture_count, 128);
-        }
-    }
-    
+    // Italian Checkers: Captures are mandatory
     if (capture_count > 0) {
-        // In Italian Checkers (Law of Maximum):
-        // Filter capture list by priority:
-        // 1. Must capture maximum pieces (for now 1-step capture evaluation, we pick captures).
-        // 2. Captures made by Dama prioritized over Pawns if equal.
-        bool has_dama_capture = false;
         for (int i = 0; i < capture_count; i++) {
-            PieceType p = game->board[captures[i].from_row][captures[i].from_col];
-            if (is_piece_dama(p)) {
-                has_dama_capture = true;
-                break;
+            Move m = captures[i];
+            // If Dama capture is available, filter out pawn captures
+            if (has_dama_capture && MOVE_TYPE(m) != 1) {
+                continue;
+            }
+            if (g_move_list.count < 32) {
+                g_move_list.moves[g_move_list.count++] = m;
             }
         }
-        
-        int final_count = 0;
-        for (int i = 0; i < capture_count; i++) {
-            PieceType p = game->board[captures[i].from_row][captures[i].from_col];
-            if (has_dama_capture && !is_piece_dama(p)) {
-                continue; // Skip pawn capture if dama capture is available
-            }
-            if (final_count < max_moves) {
-                out_moves[final_count++] = captures[i];
-            }
-        }
-        return final_count;
+        return &g_move_list;
     }
-    
-    // No captures available -> generate simple moves
-    int simple_count = 0;
-    for (int r = 0; r < 8; r++) {
-        for (int c = 0; c < 8; c++) {
-            evaluate_simple_moves_for_piece(game, r, c, out_moves, &simple_count, max_moves);
+
+    // No captures -> generate simple moves
+    if (player == PLAYER_WHITE) {
+        // White Pawns simple moves (dir 0, 1)
+        uint32_t my_men = b->white_men;
+        while (my_men) {
+            int sq = __builtin_ctz(my_men);
+            my_men &= my_men - 1;
+            
+            for (int d = 0; d < 2; d++) {
+                int dest = s_adj[sq][d];
+                if (dest >= 0 && (free_mask & (1U << dest))) {
+                    bool is_prom = (dest >= 28);
+                    Move m = MOVE_CREATE(sq, dest, 0, is_prom ? 1 : 0, 0);
+                    if (g_move_list.count < 32) {
+                        g_move_list.moves[g_move_list.count++] = m;
+                    }
+                }
+            }
+        }
+
+        // White Kings simple moves (dir 0..3)
+        uint32_t my_kings = b->white_kings;
+        while (my_kings) {
+            int sq = __builtin_ctz(my_kings);
+            my_kings &= my_kings - 1;
+            
+            for (int d = 0; d < 4; d++) {
+                int dest = s_adj[sq][d];
+                if (dest >= 0 && (free_mask & (1U << dest))) {
+                    Move m = MOVE_CREATE(sq, dest, 1, 0, 0);
+                    if (g_move_list.count < 32) {
+                        g_move_list.moves[g_move_list.count++] = m;
+                    }
+                }
+            }
+        }
+    } else {
+        // Black Pawns simple moves (dir 2, 3)
+        uint32_t my_men = b->black_men;
+        while (my_men) {
+            int sq = __builtin_ctz(my_men);
+            my_men &= my_men - 1;
+            
+            for (int d = 2; d < 4; d++) {
+                int dest = s_adj[sq][d];
+                if (dest >= 0 && (free_mask & (1U << dest))) {
+                    bool is_prom = (dest <= 3);
+                    Move m = MOVE_CREATE(sq, dest, 0, is_prom ? 1 : 0, 0);
+                    if (g_move_list.count < 32) {
+                        g_move_list.moves[g_move_list.count++] = m;
+                    }
+                }
+            }
+        }
+
+        // Black Kings simple moves (dir 0..3)
+        uint32_t my_kings = b->black_kings;
+        while (my_kings) {
+            int sq = __builtin_ctz(my_kings);
+            my_kings &= my_kings - 1;
+            
+            for (int d = 0; d < 4; d++) {
+                int dest = s_adj[sq][d];
+                if (dest >= 0 && (free_mask & (1U << dest))) {
+                    Move m = MOVE_CREATE(sq, dest, 1, 0, 0);
+                    if (g_move_list.count < 32) {
+                        g_move_list.moves[g_move_list.count++] = m;
+                    }
+                }
+            }
         }
     }
-    return simple_count;
+
+    return &g_move_list;
 }
 
-bool game_execute_move(GameState *game, const Move *move) {
-    PieceType p = game->board[move->from_row][move->from_col];
-    if (p == PIECE_NONE) return false;
+bool game_execute_move(GameState *game, Move move) {
+    if (move == MOVE_NONE) return false;
     
-    // Move piece
-    game->board[move->from_row][move->from_col] = PIECE_NONE;
+    int from = MOVE_FROM(move);
+    int to = MOVE_TO(move);
+    bool is_prom = MOVE_IS_PROM(move);
+    bool is_cap = MOVE_IS_CAP(move);
     
-    // Check for Dama promotion (reaching opposite baseline)
-    if (p == PIECE_WHITE_PAWN && move->to_row == 7) {
-        p = PIECE_WHITE_DAMA;
-    } else if (p == PIECE_BLACK_PAWN && move->to_row == 0) {
-        p = PIECE_BLACK_DAMA;
-    }
+    uint32_t from_mask = 1U << from;
+    uint32_t to_mask = 1U << to;
+    Board *b = &game->board;
+    Player cur = game->current_player;
     
-    game->board[move->to_row][move->to_col] = p;
-    
-    // Handle capture
-    if (move->captured_row >= 0 && move->captured_col >= 0) {
-        PieceType cap = move->captured_type;
-        game->board[move->captured_row][move->captured_col] = PIECE_NONE;
-        
-        if (game->current_player == PLAYER_WHITE) {
-            if (game->white_eaten_count < 12) {
-                game->white_eaten_list[game->white_eaten_count++] = cap;
+    if (cur == PLAYER_WHITE) {
+        if (b->white_men & from_mask) {
+            b->white_men &= ~from_mask;
+            if (is_prom || to >= 28) {
+                b->white_kings |= to_mask;
+            } else {
+                b->white_men |= to_mask;
             }
+        } else if (b->white_kings & from_mask) {
+            b->white_kings &= ~from_mask;
+            b->white_kings |= to_mask;
         } else {
+            return false;
+        }
+        
+        if (is_cap) {
+            int cap_sq = GET_CAPTURED_SQ(from, to);
+            uint32_t cap_mask = 1U << cap_sq;
+            PieceType cap_type = PIECE_NONE;
+            
+            if (b->black_men & cap_mask) {
+                b->black_men &= ~cap_mask;
+                cap_type = PIECE_BLACK_PAWN;
+            } else if (b->black_kings & cap_mask) {
+                b->black_kings &= ~cap_mask;
+                cap_type = PIECE_BLACK_DAMA;
+            }
+            
+            if (game->white_eaten_count < 12) {
+                game->white_eaten_list[game->white_eaten_count++] = cap_type;
+            }
+        }
+    } else {
+        if (b->black_men & from_mask) {
+            b->black_men &= ~from_mask;
+            if (is_prom || to <= 3) {
+                b->black_kings |= to_mask;
+            } else {
+                b->black_men |= to_mask;
+            }
+        } else if (b->black_kings & from_mask) {
+            b->black_kings &= ~from_mask;
+            b->black_kings |= to_mask;
+        } else {
+            return false;
+        }
+        
+        if (is_cap) {
+            int cap_sq = GET_CAPTURED_SQ(from, to);
+            uint32_t cap_mask = 1U << cap_sq;
+            PieceType cap_type = PIECE_NONE;
+            
+            if (b->white_men & cap_mask) {
+                b->white_men &= ~cap_mask;
+                cap_type = PIECE_WHITE_PAWN;
+            } else if (b->white_kings & cap_mask) {
+                b->white_kings &= ~cap_mask;
+                cap_type = PIECE_WHITE_DAMA;
+            }
+            
             if (game->black_eaten_count < 12) {
-                game->black_eaten_list[game->black_eaten_count++] = cap;
+                game->black_eaten_list[game->black_eaten_count++] = cap_type;
             }
         }
     }
     
     // Switch turn
-    game->current_player = (game->current_player == PLAYER_WHITE) ? PLAYER_BLACK : PLAYER_WHITE;
+    game->current_player = (cur == PLAYER_WHITE) ? PLAYER_BLACK : PLAYER_WHITE;
     
-    // Check if next player has any valid moves
-    Move test_moves[128];
-    int next_moves = game_get_valid_moves(game, test_moves, 128);
-    if (next_moves == 0) {
+    // Check if next player has moves
+    const MoveList *next_moves = game_get_valid_moves(game);
+    if (next_moves->count == 0) {
         game->is_game_over = true;
-        // The current player after switch has no moves -> previous player won!
-        game->winner = (game->current_player == PLAYER_WHITE) ? PLAYER_BLACK : PLAYER_WHITE;
+        game->winner = cur; // Current player won!
     }
     
     return true;
 }
+

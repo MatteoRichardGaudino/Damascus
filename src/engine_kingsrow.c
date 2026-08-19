@@ -297,36 +297,37 @@ void engine_kingsrow_init(void **state) {
 }
 
 Move engine_kingsrow_get_move(void *state, const GameState *game) {
-    Move empty_move = { -1, -1, -1, -1, -1, -1, PIECE_NONE };
-    if (!state || !game || game->is_game_over) return empty_move;
+    if (!state || !game || game->is_game_over) return MOVE_NONE;
 
     KingsrowEngineState *ks = (KingsrowEngineState*)state;
     if (!ks->is_connected) {
         // Retry connection if not yet connected
         if (!start_kingsrow_process(ks)) {
-            return empty_move;
+            return MOVE_NONE;
         }
     }
 
     int color = (game->current_player == PLAYER_WHITE) ? CB_WHITE : CB_BLACK;
     double maxtime = 1.0;
 
-    // Convert Damascus board to CheckerBoard format: b[col_x][row_y]
+    // Convert Damascus bitboard to CheckerBoard format: b[col_x][row_y]
     int b[8][8];
     memset(b, 0, sizeof(b));
-    for (int r = 0; r < 8; r++) {
-        for (int c = 0; c < 8; c++) {
-            PieceType p = game->board[r][c];
-            int cb_val = CB_FREE;
-            if (p == PIECE_WHITE_PAWN) cb_val = CB_WHITE | CB_MAN;
-            else if (p == PIECE_WHITE_DAMA) cb_val = CB_WHITE | CB_KING;
-            else if (p == PIECE_BLACK_PAWN) cb_val = CB_BLACK | CB_MAN;
-            else if (p == PIECE_BLACK_DAMA) cb_val = CB_BLACK | CB_KING;
+    for (int sq = 0; sq < 32; sq++) {
+        PieceType p = board_get_piece_at(&game->board, sq);
+        if (p == PIECE_NONE) continue;
+        
+        int cb_val = CB_FREE;
+        if (p == PIECE_WHITE_PAWN) cb_val = CB_WHITE | CB_MAN;
+        else if (p == PIECE_WHITE_DAMA) cb_val = CB_WHITE | CB_KING;
+        else if (p == PIECE_BLACK_PAWN) cb_val = CB_BLACK | CB_MAN;
+        else if (p == PIECE_BLACK_DAMA) cb_val = CB_BLACK | CB_KING;
 
-            int y_cb = 7 - r;
-            int x_cb = c;
-            b[x_cb][y_cb] = cb_val;
-        }
+        int r = SQ_TO_ROW(sq);
+        int c = SQ_TO_COL(sq);
+        int y_cb = 7 - r;
+        int x_cb = 7 - c;
+        b[x_cb][y_cb] = cb_val;
     }
 
     char cmd[2048];
@@ -341,17 +342,17 @@ Move engine_kingsrow_get_move(void *state, const GameState *game) {
 #ifdef _WIN32
     DWORD written = 0;
     if (!WriteFile(ks->h_stdin_write, cmd, (DWORD)strlen(cmd), &written, NULL)) {
-        return empty_move;
+        return MOVE_NONE;
     }
 
     char response[1024] = "";
     DWORD read_bytes = 0;
     if (!ReadFile(ks->h_stdout_read, response, sizeof(response) - 1, &read_bytes, NULL) || read_bytes == 0) {
-        return empty_move;
+        return MOVE_NONE;
     }
     response[read_bytes] = '\0';
 #else
-    if (!ks->stream_in || !ks->stream_out) return empty_move;
+    if (!ks->stream_in || !ks->stream_out) return MOVE_NONE;
     fputs(cmd, ks->stream_in);
     fflush(ks->stream_in);
 
@@ -364,36 +365,38 @@ Move engine_kingsrow_get_move(void *state, const GameState *game) {
             break;
         }
     }
-    if (!got_move) return empty_move;
+    if (!got_move) return MOVE_NONE;
 #endif
 
     // Parse response format: "MOVE <res> <jumps> <from_x> <from_y> <to_x> <to_y> ..."
     int res = 0, jumps = 0, fx = -1, fy = -1, tx = -1, ty = -1;
     if (sscanf(response, "MOVE %d %d %d %d %d %d", &res, &jumps, &fx, &fy, &tx, &ty) >= 6) {
         int from_row = 7 - fy;
-        int from_col = fx;
+        int from_col = 7 - fx;
         int to_row = 7 - ty;
-        int to_col = tx;
+        int to_col = 7 - tx;
+        int from_sq = ROW_COL_TO_SQ(from_row, from_col);
+        int to_sq = ROW_COL_TO_SQ(to_row, to_col);
 
-        Move valid_moves[128];
-        int count = game_get_valid_moves(game, valid_moves, 128);
-        for (int i = 0; i < count; i++) {
-            if (valid_moves[i].from_row == from_row &&
-                valid_moves[i].from_col == from_col &&
-                valid_moves[i].to_row == to_row &&
-                valid_moves[i].to_col == to_col) {
-                return valid_moves[i];
+        const MoveList *valid_moves = game_get_valid_moves(game);
+        for (int i = 0; i < valid_moves->count; i++) {
+            Move m = valid_moves->moves[i];
+            if (MOVE_FROM(m) == from_sq && MOVE_TO(m) == to_sq) {
+                return m;
             }
         }
 
-        for (int i = 0; i < count; i++) {
-            if (valid_moves[i].from_row == from_row && valid_moves[i].from_col == from_col) {
-                return valid_moves[i];
+        for (int i = 0; i < valid_moves->count; i++) {
+            Move m = valid_moves->moves[i];
+            if (MOVE_FROM(m) == from_sq) {
+                return m;
             }
         }
+
+        if (valid_moves->count > 0) return valid_moves->moves[0];
     }
 
-    return empty_move;
+    return MOVE_NONE;
 }
 
 void engine_kingsrow_cleanup(void *state) {

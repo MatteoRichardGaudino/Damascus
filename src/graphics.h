@@ -56,6 +56,6 @@ typedef struct {
 bool graphics_init(GraphicsContext *gfx);
 void graphics_cleanup(GraphicsContext *gfx);
 
-void graphics_render_scene(GraphicsContext *gfx, const GameState *game, const Camera *cam, float aspect_ratio, int valid_move_count, const Move *valid_moves, PieceAnim *anim, double current_time);
+void graphics_render_scene(GraphicsContext *gfx, const GameState *game, const Camera *cam, float aspect_ratio, const MoveList *valid_moves, PieceAnim *anim, double current_time);
 
 #endif // GRAPHICS_H

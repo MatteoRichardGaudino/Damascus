@@ -378,9 +378,9 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
         
         // System status banner
         if (engine_is_type_available(ENGINE_TYPE_KINGSROW)) {
-            ui_add_text("MOTORI DISPONIBILI: RANDOM, CHECKERBOARD (NATIVO), KINGSROW (BRIDGE)", start_x, p_y + 325.0f, 0.95f, text_sub);
+            ui_add_text("MOTORI: RANDOM, CHECKERBOARD, KINGSROW, MCTS_UCB1", start_x, p_y + 325.0f, 0.95f, text_sub);
         } else {
-            ui_add_text("MOTORI DISPONIBILI: RANDOM, CHECKERBOARD (NATIVO MARTIN FIERZ)", start_x, p_y + 325.0f, 0.95f, text_sub);
+            ui_add_text("MOTORI: RANDOM, CHECKERBOARD, MCTS_UCB1 (NATIVO)", start_x, p_y + 325.0f, 0.95f, text_sub);
         }
         
         // Start Game Button
@@ -529,26 +529,23 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
 
             // CPU Engine Selection button in 1Player mode
             if (point_in_rect(mouse_x, mouse_y, start_x, eng_y + 70.0f, 465.0f, 35.0f)) {
-                ui->selected_black_engine = (ui->selected_black_engine + 1) % 3;
-                if (!engine_is_type_available(ui->selected_black_engine)) {
-                    ui->selected_black_engine = ENGINE_TYPE_RANDOM;
-                }
+                do {
+                    ui->selected_black_engine = (ui->selected_black_engine + 1) % 4;
+                } while (!engine_is_type_available(ui->selected_black_engine));
                 return true;
             }
         } else if (ui->selected_mode == MODE_CPUVSCPU) {
             float eng_y = p_y + 195.0f;
             if (point_in_rect(mouse_x, mouse_y, start_x, eng_y + 22.0f, 225.0f, 40.0f)) {
-                ui->selected_white_engine = (ui->selected_white_engine + 1) % 3;
-                if (!engine_is_type_available(ui->selected_white_engine)) {
-                    ui->selected_white_engine = ENGINE_TYPE_RANDOM;
-                }
+                do {
+                    ui->selected_white_engine = (ui->selected_white_engine + 1) % 4;
+                } while (!engine_is_type_available(ui->selected_white_engine));
                 return true;
             }
             if (point_in_rect(mouse_x, mouse_y, start_x + 240.0f, eng_y + 22.0f, 225.0f, 40.0f)) {
-                ui->selected_black_engine = (ui->selected_black_engine + 1) % 3;
-                if (!engine_is_type_available(ui->selected_black_engine)) {
-                    ui->selected_black_engine = ENGINE_TYPE_RANDOM;
-                }
+                do {
+                    ui->selected_black_engine = (ui->selected_black_engine + 1) % 4;
+                } while (!engine_is_type_available(ui->selected_black_engine));
                 return true;
             }
         }

@@ -113,68 +113,77 @@ int main(void) {
                 if (is_human) {
                     int row, col;
                     if (interaction_pick_tile(mouse_x, mouse_y, win.win_width, win.win_height, &cam, &row, &col)) {
-                        Move valid_moves[128];
-                        int move_count = game_get_valid_moves(&game, valid_moves, 128);
+                        const MoveList *valid_moves = game_get_valid_moves(&game);
+                        int picked_sq = ROW_COL_TO_SQ(row, col);
                         
                         if (game.selected_row < 0) {
                             // Select piece
-                            PieceType p = game.board[row][col];
-                            bool matches_player = (game.current_player == PLAYER_WHITE) ? is_piece_white(p) : is_piece_black(p);
-                            if (matches_player) {
-                                game.selected_row = row;
-                                game.selected_col = col;
-                            }
-                        } else {
-                            // Execute move if tile is valid
-                            bool move_executed = false;
-                            for (int m = 0; m < move_count; m++) {
-                                if (valid_moves[m].from_row == game.selected_row &&
-                                    valid_moves[m].from_col == game.selected_col &&
-                                    valid_moves[m].to_row == row &&
-                                    valid_moves[m].to_col == col) {
-                                    
-                                    // Trigger 3D jumping piece arc animation
-                                    piece_anim.active = true;
-                                    piece_anim.from_row = valid_moves[m].from_row;
-                                    piece_anim.from_col = valid_moves[m].from_col;
-                                    piece_anim.to_row = valid_moves[m].to_row;
-                                    piece_anim.to_col = valid_moves[m].to_col;
-                                    piece_anim.piece_type = game.board[valid_moves[m].from_row][valid_moves[m].from_col];
-                                    piece_anim.start_time = current_time;
-                                    piece_anim.move_duration = 0.30;
-                                    piece_anim.capture_duration = 0.35;
-                                    
-                                    if (valid_moves[m].captured_row >= 0 && valid_moves[m].captured_col >= 0) {
-                                        piece_anim.has_capture = true;
-                                        piece_anim.captured_row = valid_moves[m].captured_row;
-                                        piece_anim.captured_col = valid_moves[m].captured_col;
-                                        piece_anim.captured_type = valid_moves[m].captured_type;
-                                        
-                                        if (is_piece_black(valid_moves[m].captured_type)) {
-                                            piece_anim.captured_target_x = -1.5f;
-                                            piece_anim.captured_target_z = (float)(game.white_eaten_count) * 0.65f;
-                                        } else {
-                                            piece_anim.captured_target_x = 8.5f;
-                                            piece_anim.captured_target_z = (float)(game.black_eaten_count) * 0.65f;
-                                        }
-                                    } else {
-                                        piece_anim.has_capture = false;
-                                    }
-                                    
-                                    game_execute_move(&game, &valid_moves[m]);
-                                    game.selected_row = -1;
-                                    game.selected_col = -1;
-                                    move_executed = true;
-                                    break;
-                                }
-                            }
-                            if (!move_executed) {
-                                // Select new piece or deselect
-                                PieceType p = game.board[row][col];
+                            if (game_is_dark_tile(row, col)) {
+                                PieceType p = board_get_piece_at(&game.board, picked_sq);
                                 bool matches_player = (game.current_player == PLAYER_WHITE) ? is_piece_white(p) : is_piece_black(p);
                                 if (matches_player) {
                                     game.selected_row = row;
                                     game.selected_col = col;
+                                }
+                            }
+                        } else {
+                            // Execute move if tile is valid
+                            bool move_executed = false;
+                            int sel_sq = ROW_COL_TO_SQ(game.selected_row, game.selected_col);
+                            
+                            if (game_is_dark_tile(row, col)) {
+                                for (int m = 0; m < valid_moves->count; m++) {
+                                    Move mv = valid_moves->moves[m];
+                                    if (MOVE_FROM(mv) == sel_sq && MOVE_TO(mv) == picked_sq) {
+                                        // Trigger 3D jumping piece arc animation
+                                        piece_anim.active = true;
+                                        piece_anim.from_row = SQ_TO_ROW(MOVE_FROM(mv));
+                                        piece_anim.from_col = SQ_TO_COL(MOVE_FROM(mv));
+                                        piece_anim.to_row = SQ_TO_ROW(MOVE_TO(mv));
+                                        piece_anim.to_col = SQ_TO_COL(MOVE_TO(mv));
+                                        piece_anim.piece_type = board_get_piece_at(&game.board, MOVE_FROM(mv));
+                                        piece_anim.start_time = current_time;
+                                        piece_anim.move_duration = 0.30;
+                                        piece_anim.capture_duration = 0.35;
+                                        
+                                        if (MOVE_IS_CAP(mv)) {
+                                            int cap_sq = GET_CAPTURED_SQ(MOVE_FROM(mv), MOVE_TO(mv));
+                                            piece_anim.has_capture = true;
+                                            piece_anim.captured_row = SQ_TO_ROW(cap_sq);
+                                            piece_anim.captured_col = SQ_TO_COL(cap_sq);
+                                            piece_anim.captured_type = board_get_piece_at(&game.board, cap_sq);
+                                            
+                                            if (is_piece_black(piece_anim.captured_type)) {
+                                                piece_anim.captured_target_x = -1.5f;
+                                                piece_anim.captured_target_z = (float)(game.white_eaten_count) * 0.65f;
+                                            } else {
+                                                piece_anim.captured_target_x = 8.5f;
+                                                piece_anim.captured_target_z = (float)(game.black_eaten_count) * 0.65f;
+                                            }
+                                        } else {
+                                            piece_anim.has_capture = false;
+                                        }
+                                        
+                                        game_execute_move(&game, mv);
+                                        game.selected_row = -1;
+                                        game.selected_col = -1;
+                                        move_executed = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!move_executed) {
+                                // Select new piece or deselect
+                                if (game_is_dark_tile(row, col)) {
+                                    PieceType p = board_get_piece_at(&game.board, picked_sq);
+                                    bool matches_player = (game.current_player == PLAYER_WHITE) ? is_piece_white(p) : is_piece_black(p);
+                                    if (matches_player) {
+                                        game.selected_row = row;
+                                        game.selected_col = col;
+                                    } else {
+                                        game.selected_row = -1;
+                                        game.selected_col = -1;
+                                    }
                                 } else {
                                     game.selected_row = -1;
                                     game.selected_col = -1;
@@ -218,27 +227,30 @@ int main(void) {
                         ui.has_black_ai_time = true;
                     }
 
-                    if (cpu_move.from_row >= 0) {
+                    if (cpu_move != MOVE_NONE) {
                         double anim_start = glfwGetTime();
+                        int from_sq = MOVE_FROM(cpu_move);
+                        int to_sq = MOVE_TO(cpu_move);
 
                         // Trigger 3D jumping piece arc animation for CPU
                         piece_anim.active = true;
-                        piece_anim.from_row = cpu_move.from_row;
-                        piece_anim.from_col = cpu_move.from_col;
-                        piece_anim.to_row = cpu_move.to_row;
-                        piece_anim.to_col = cpu_move.to_col;
-                        piece_anim.piece_type = game.board[cpu_move.from_row][cpu_move.from_col];
+                        piece_anim.from_row = SQ_TO_ROW(from_sq);
+                        piece_anim.from_col = SQ_TO_COL(from_sq);
+                        piece_anim.to_row = SQ_TO_ROW(to_sq);
+                        piece_anim.to_col = SQ_TO_COL(to_sq);
+                        piece_anim.piece_type = board_get_piece_at(&game.board, from_sq);
                         piece_anim.start_time = anim_start;
                         piece_anim.move_duration = 0.30;
                         piece_anim.capture_duration = 0.35;
                         
-                        if (cpu_move.captured_row >= 0 && cpu_move.captured_col >= 0) {
+                        if (MOVE_IS_CAP(cpu_move)) {
+                            int cap_sq = GET_CAPTURED_SQ(from_sq, to_sq);
                             piece_anim.has_capture = true;
-                            piece_anim.captured_row = cpu_move.captured_row;
-                            piece_anim.captured_col = cpu_move.captured_col;
-                            piece_anim.captured_type = cpu_move.captured_type;
+                            piece_anim.captured_row = SQ_TO_ROW(cap_sq);
+                            piece_anim.captured_col = SQ_TO_COL(cap_sq);
+                            piece_anim.captured_type = board_get_piece_at(&game.board, cap_sq);
                             
-                            if (is_piece_black(cpu_move.captured_type)) {
+                            if (is_piece_black(piece_anim.captured_type)) {
                                 piece_anim.captured_target_x = -1.5f;
                                 piece_anim.captured_target_z = (float)(game.white_eaten_count) * 0.65f;
                             } else {
@@ -249,7 +261,7 @@ int main(void) {
                             piece_anim.has_capture = false;
                         }
                         
-                        game_execute_move(&game, &cpu_move);
+                        game_execute_move(&game, cpu_move);
                         game.selected_row = -1;
                         game.selected_col = -1;
                     }
@@ -259,14 +271,13 @@ int main(void) {
         }
         
         // Fetch valid moves for visual highlighting
-        Move current_valid_moves[128];
-        int valid_count = game_get_valid_moves(&game, current_valid_moves, 128);
+        const MoveList *current_valid_moves = game_get_valid_moves(&game);
         
         // Render Frame
         glClearColor(0.05f, 0.07f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
-        graphics_render_scene(&gfx, &game, &cam, win.aspect_ratio, valid_count, current_valid_moves, &piece_anim, current_time);
+        graphics_render_scene(&gfx, &game, &cam, win.aspect_ratio, current_valid_moves, &piece_anim, current_time);
         ui_render(&ui, &game, gfx.ui_shader);
         
         window_swap_buffers(&win);

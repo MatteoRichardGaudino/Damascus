@@ -325,7 +325,7 @@ static void draw_piece(GraphicsContext *gfx, mat4 model, vec4 color, vec4 highli
     }
 }
 
-void graphics_render_scene(GraphicsContext *gfx, const GameState *game, const Camera *cam, float aspect_ratio, int valid_move_count, const Move *valid_moves, PieceAnim *anim, double current_time) {
+void graphics_render_scene(GraphicsContext *gfx, const GameState *game, const Camera *cam, float aspect_ratio, const MoveList *valid_moves, PieceAnim *anim, double current_time) {
     glUseProgram(gfx->basic_shader);
     
     mat4 view, proj;
@@ -383,16 +383,19 @@ void graphics_render_scene(GraphicsContext *gfx, const GameState *game, const Ca
             glm_vec4_copy(no_highlight, highlight);
             
             // Check if this tile is a valid move target
-            if (game->selected_row >= 0 && game->selected_col >= 0) {
-                for (int m = 0; m < valid_move_count; m++) {
-                    if (valid_moves[m].from_row == game->selected_row &&
-                        valid_moves[m].from_col == game->selected_col &&
-                        valid_moves[m].to_row == r && valid_moves[m].to_col == c) {
-                        highlight[0] = move_target_highlight[0];
-                        highlight[1] = move_target_highlight[1];
-                        highlight[2] = move_target_highlight[2];
-                        highlight[3] = move_target_highlight[3];
-                        break;
+            if (game->selected_row >= 0 && game->selected_col >= 0 && game_is_dark_tile(r, c)) {
+                int sel_sq = ROW_COL_TO_SQ(game->selected_row, game->selected_col);
+                int target_sq = ROW_COL_TO_SQ(r, c);
+                if (valid_moves) {
+                    for (int m = 0; m < valid_moves->count; m++) {
+                        Move mv = valid_moves->moves[m];
+                        if (MOVE_FROM(mv) == sel_sq && MOVE_TO(mv) == target_sq) {
+                            highlight[0] = move_target_highlight[0];
+                            highlight[1] = move_target_highlight[1];
+                            highlight[2] = move_target_highlight[2];
+                            highlight[3] = move_target_highlight[3];
+                            break;
+                        }
                     }
                 }
             }
@@ -442,39 +445,40 @@ void graphics_render_scene(GraphicsContext *gfx, const GameState *game, const Ca
     }
 
     // 3. Draw Pieces on Board
-    for (int r = 0; r < 8; r++) {
-        for (int c = 0; c < 8; c++) {
-            // Hide static piece at destination while moving
-            if (is_animating_move && r == anim->to_row && c == anim->to_col) {
-                continue;
-            }
-            
-            // Hide captured piece on board once Stage 2 starts
-            if (anim && anim->active && anim->has_capture && (current_time - anim->start_time) >= anim->move_duration && r == anim->captured_row && c == anim->captured_col) {
-                continue;
-            }
-            
-            PieceType p = game->board[r][c];
-            // If this tile had a piece captured in the current active animation,
-            // keep rendering the captured piece statically on its tile during Stage 1 (before Stage 2 fly-out starts)
-            if (p == PIECE_NONE && anim && anim->active && anim->has_capture && r == anim->captured_row && c == anim->captured_col) {
-                double elapsed = current_time - anim->start_time;
-                if (elapsed < anim->move_duration) {
-                    p = anim->captured_type;
-                }
-            }
-            
-            if (p == PIECE_NONE) continue;
-            
-            glm_mat4_identity(model);
-            glm_translate(model, (vec3){(float)c, 0.2f, (float)r});
-            
-            vec4 *p_col = is_piece_white(p) ? &white_piece_color : &black_piece_color;
-            bool is_selected = (r == game->selected_row && c == game->selected_col);
-            bool is_dama = is_piece_dama(p);
-            
-            draw_piece(gfx, model, *p_col, is_selected ? select_highlight : no_highlight, is_dama);
+    for (int sq = 0; sq < 32; sq++) {
+        int r = SQ_TO_ROW(sq);
+        int c = SQ_TO_COL(sq);
+        
+        // Hide static piece at destination while moving
+        if (is_animating_move && r == anim->to_row && c == anim->to_col) {
+            continue;
         }
+        
+        // Hide captured piece on board once Stage 2 starts
+        if (anim && anim->active && anim->has_capture && (current_time - anim->start_time) >= anim->move_duration && r == anim->captured_row && c == anim->captured_col) {
+            continue;
+        }
+        
+        PieceType p = board_get_piece_at(&game->board, sq);
+        // If this tile had a piece captured in the current active animation,
+        // keep rendering the captured piece statically on its tile during Stage 1 (before Stage 2 fly-out starts)
+        if (p == PIECE_NONE && anim && anim->active && anim->has_capture && r == anim->captured_row && c == anim->captured_col) {
+            double elapsed = current_time - anim->start_time;
+            if (elapsed < anim->move_duration) {
+                p = anim->captured_type;
+            }
+        }
+        
+        if (p == PIECE_NONE) continue;
+        
+        glm_mat4_identity(model);
+        glm_translate(model, (vec3){(float)c, 0.2f, (float)r});
+        
+        vec4 *p_col = is_piece_white(p) ? &white_piece_color : &black_piece_color;
+        bool is_selected = (r == game->selected_row && c == game->selected_col);
+        bool is_dama = is_piece_dama(p);
+        
+        draw_piece(gfx, model, *p_col, is_selected ? select_highlight : no_highlight, is_dama);
     }
 
     // Draw active moving piece

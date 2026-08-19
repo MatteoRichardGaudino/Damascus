@@ -38,6 +38,7 @@ set(SOURCES
     src/engine_random.c
     src/engine_checkerboard.c
     src/engine_kingsrow.c
+    src/mcts_ucb1.c
     src/interaction.c
     src/ui.c
     third_party/glad/glad.c

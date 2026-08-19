@@ -2,6 +2,7 @@
 #include "engine_random.h"
 #include "engine_checkerboard.h"
 #include "engine_kingsrow.h"
+#include "mcts_ucb1.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -24,17 +25,15 @@ void engine_random_init(void **state) {
 
 Move engine_random_get_move(void *state, const GameState *game) {
     RandomEngineState *st = (RandomEngineState*)state;
-    Move moves[128];
-    int count = game_get_valid_moves(game, moves, 128);
+    const MoveList *list = game_get_valid_moves(game);
     
-    if (count == 0) {
-        Move empty_move = { -1, -1, -1, -1, -1, -1, PIECE_NONE };
-        return empty_move;
+    if (!list || list->count == 0) {
+        return MOVE_NONE;
     }
     
     if (st) st->move_counter++;
-    int index = rand() % count;
-    return moves[index];
+    int index = rand() % list->count;
+    return list->moves[index];
 }
 
 void engine_random_cleanup(void *state) {
@@ -81,6 +80,8 @@ bool engine_is_type_available(EngineType type) {
             return true;
         case ENGINE_TYPE_KINGSROW:
             return engine_kingsrow_is_available();
+        case ENGINE_TYPE_MCTS_UCB1:
+            return true;
         default:
             return false;
     }
@@ -94,6 +95,8 @@ const char *engine_get_type_name(EngineType type) {
             return "CheckerBoard";
         case ENGINE_TYPE_KINGSROW:
             return "Kingsrow";
+        case ENGINE_TYPE_MCTS_UCB1:
+            return "MCTS_UCB1";
         default:
             return "Unknown";
     }
@@ -113,6 +116,11 @@ Engine engine_create(EngineType type) {
             eng.init = engine_kingsrow_init;
             eng.get_move = engine_kingsrow_get_move;
             eng.cleanup = engine_kingsrow_cleanup;
+            break;
+        case ENGINE_TYPE_MCTS_UCB1:
+            eng.init = engine_mcts_ucb1_init;
+            eng.get_move = engine_mcts_ucb1_get_move;
+            eng.cleanup = engine_mcts_ucb1_cleanup;
             break;
         case ENGINE_TYPE_RANDOM:
         default:

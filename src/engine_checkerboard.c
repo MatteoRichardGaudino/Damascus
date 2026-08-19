@@ -1146,40 +1146,30 @@ void engine_checkerboard_init(void **state) {
 }
 
 Move engine_checkerboard_get_move(void *state, const GameState *game) {
-    Move empty_move = { -1, -1, -1, -1, -1, -1, PIECE_NONE };
-    if (!game || game->is_game_over) return empty_move;
+    if (!game || game->is_game_over) return MOVE_NONE;
 
     CheckerboardEngineState *st = (CheckerboardEngineState*)state;
     double search_time = st ? st->search_time : 0.60;
 
-    // Convert Damascus board to CheckerBoard board[46]
-    // In Damascus:
-    // White is at row 0, 1, 2 (moving up towards row 7)
-    // Black is at row 5, 6, 7 (moving down towards row 0)
-    // In CheckerBoard b[x][y]:
-    // Black base is y = 0 (moving towards y = 7)
-    // White base is y = 7 (moving towards y = 0)
-    // Conversion mapping:
-    // x_cb = col_damascus
-    // y_cb = 7 - row_damascus
-    // row_damascus = 7 - y_cb
-    // col_damascus = x_cb
+    // Convert Damascus bitboard to CheckerBoard board[46]
     int b[8][8];
     memset(b, 0, sizeof(b));
 
-    for (int r = 0; r < 8; r++) {
-        for (int c = 0; c < 8; c++) {
-            PieceType p = game->board[r][c];
-            int cb_val = CB_FREE;
-            if (p == PIECE_WHITE_PAWN) cb_val = CB_WHITE | CB_MAN;
-            else if (p == PIECE_WHITE_DAMA) cb_val = CB_WHITE | CB_KING;
-            else if (p == PIECE_BLACK_PAWN) cb_val = CB_BLACK | CB_MAN;
-            else if (p == PIECE_BLACK_DAMA) cb_val = CB_BLACK | CB_KING;
+    for (int sq = 0; sq < 32; sq++) {
+        PieceType p = board_get_piece_at(&game->board, sq);
+        if (p == PIECE_NONE) continue;
+        
+        int cb_val = CB_FREE;
+        if (p == PIECE_WHITE_PAWN) cb_val = CB_WHITE | CB_MAN;
+        else if (p == PIECE_WHITE_DAMA) cb_val = CB_WHITE | CB_KING;
+        else if (p == PIECE_BLACK_PAWN) cb_val = CB_BLACK | CB_MAN;
+        else if (p == PIECE_BLACK_DAMA) cb_val = CB_BLACK | CB_KING;
 
-            int y_cb = 7 - r;
-            int x_cb = c;
-            b[x_cb][y_cb] = cb_val;
-        }
+        int r = SQ_TO_ROW(sq);
+        int c = SQ_TO_COL(sq);
+        int y_cb = 7 - r;
+        int x_cb = 7 - c;
+        b[x_cb][y_cb] = cb_val;
     }
 
     int board[46];
@@ -1208,35 +1198,34 @@ Move engine_checkerboard_get_move(void *state, const GameState *game) {
     checkers_search(board, cb_color, search_time);
 
     // Convert CB best move to Damascus coordinates
-    // If jumps > 0, the first step is to path[1] or to
     int from_row = 7 - g_best_cb_move.from.y;
-    int from_col = g_best_cb_move.from.x;
-    
+    int from_col = 7 - g_best_cb_move.from.x;
     int to_row = (g_best_cb_move.jumps > 0) ? (7 - g_best_cb_move.path[1].y) : (7 - g_best_cb_move.to.y);
-    int to_col = (g_best_cb_move.jumps > 0) ? (g_best_cb_move.path[1].x) : (g_best_cb_move.to.x);
+    int to_col = (g_best_cb_move.jumps > 0) ? (7 - g_best_cb_move.path[1].x) : (7 - g_best_cb_move.to.x);
+
+    int from_sq = ROW_COL_TO_SQ(from_row, from_col);
+    int to_sq = ROW_COL_TO_SQ(to_row, to_col);
 
     // Match with valid Damascus moves
-    Move valid_moves[128];
-    int count = game_get_valid_moves(game, valid_moves, 128);
-    for (int i = 0; i < count; i++) {
-        if (valid_moves[i].from_row == from_row &&
-            valid_moves[i].from_col == from_col &&
-            valid_moves[i].to_row == to_row &&
-            valid_moves[i].to_col == to_col) {
-            return valid_moves[i];
+    const MoveList *valid_moves = game_get_valid_moves(game);
+    for (int i = 0; i < valid_moves->count; i++) {
+        Move m = valid_moves->moves[i];
+        if (MOVE_FROM(m) == from_sq && MOVE_TO(m) == to_sq) {
+            return m;
         }
     }
 
-    // If exact single-step match not found directly (e.g. multistep destination), find matching piece start
-    for (int i = 0; i < count; i++) {
-        if (valid_moves[i].from_row == from_row && valid_moves[i].from_col == from_col) {
-            return valid_moves[i];
+    // If exact single-step match not found directly, find matching piece start
+    for (int i = 0; i < valid_moves->count; i++) {
+        Move m = valid_moves->moves[i];
+        if (MOVE_FROM(m) == from_sq) {
+            return m;
         }
     }
 
     // Fallback to first valid move if any
-    if (count > 0) return valid_moves[0];
-    return empty_move;
+    if (valid_moves->count > 0) return valid_moves->moves[0];
+    return MOVE_NONE;
 }
 
 void engine_checkerboard_cleanup(void *state) {
