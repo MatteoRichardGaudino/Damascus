@@ -109,10 +109,10 @@ int main(int argc, char *argv[]) {
 
             if (ptr) {
                 ptr++;
-                for (int y = 0; y < 8; y++) {
-                    for (int x = 0; x < 8; x++) {
+                for (int x = 0; x < 8; x++) {
+                    for (int y = 0; y < 8; y++) {
                         if (*ptr == '\0') break;
-                        board[y][x] = atoi(ptr);
+                        board[x][y] = atoi(ptr);
                         ptr = strchr(ptr, ' ');
                         if (ptr) ptr++;
                         else break;
@@ -127,11 +127,14 @@ int main(int argc, char *argv[]) {
 
             int res = pGetMove(board, color, maxtime, eval_str, &playnow, 0, 0, &move);
 
+            int to_x = (move.jumps > 0) ? move.path[1].x : move.to.x;
+            int to_y = (move.jumps > 0) ? move.path[1].y : move.to.y;
+
             printf("MOVE %d %d %d %d %d %d %d %d %s\n",
                    res,
                    move.jumps,
                    move.from.x, move.from.y,
-                   move.to.x, move.to.y,
+                   to_x, to_y,
                    move.newpiece, move.oldpiece,
                    eval_str[0] ? eval_str : "OK");
             fflush(stdout);
