@@ -1,6 +1,7 @@
 #include "graphics.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
 static char* read_file_content(const char *path) {
@@ -325,6 +326,65 @@ static void draw_piece(GraphicsContext *gfx, mat4 model, vec4 color, vec4 highli
     }
 }
 
+void piece_anim_start(PieceAnim *anim, const GameState *game, Move mv, double current_time) {
+    if (!anim) return;
+    memset(anim, 0, sizeof(PieceAnim));
+    
+    anim->active = true;
+    anim->start_time = current_time;
+    anim->step_move_duration = 0.22;
+    anim->step_cap_duration = 0.28;
+    anim->piece_type = board_get_piece_at(&game->board, mv.from);
+    anim->is_prom = mv.is_prom;
+    
+    if (!MOVE_IS_CAP(mv)) {
+        anim->jump_count = 1;
+        anim->path_rows[0] = SQ_TO_ROW(mv.from);
+        anim->path_cols[0] = SQ_TO_COL(mv.from);
+        anim->path_rows[1] = SQ_TO_ROW(mv.to);
+        anim->path_cols[1] = SQ_TO_COL(mv.to);
+        anim->capture_count = 0;
+    } else {
+        int jumps = mv.jumps > 0 ? mv.jumps : 1;
+        if (jumps > MAX_JUMP_STEPS) jumps = MAX_JUMP_STEPS;
+        anim->jump_count = jumps;
+        
+        // Waypoint path
+        if (mv.jumps > 0) {
+            for (int i = 0; i <= jumps; i++) {
+                int sq = mv.path[i];
+                anim->path_rows[i] = SQ_TO_ROW(sq);
+                anim->path_cols[i] = SQ_TO_COL(sq);
+            }
+        } else {
+            anim->path_rows[0] = SQ_TO_ROW(mv.from);
+            anim->path_cols[0] = SQ_TO_COL(mv.from);
+            anim->path_rows[1] = SQ_TO_ROW(mv.to);
+            anim->path_cols[1] = SQ_TO_COL(mv.to);
+        }
+        
+        anim->capture_count = jumps;
+        int white_eaten_base = game->white_eaten_count;
+        int black_eaten_base = game->black_eaten_count;
+        
+        for (int j = 0; j < jumps; j++) {
+            int cap_sq = (mv.jumps > 0) ? mv.caps[j] : GET_CAPTURED_SQ(mv.from, mv.to);
+            anim->captured_rows[j] = SQ_TO_ROW(cap_sq);
+            anim->captured_cols[j] = SQ_TO_COL(cap_sq);
+            PieceType cap_type = board_get_piece_at(&game->board, cap_sq);
+            anim->captured_types[j] = cap_type;
+            
+            if (is_piece_black(cap_type)) {
+                anim->captured_target_x[j] = -1.5f;
+                anim->captured_target_z[j] = (float)(white_eaten_base++) * 0.65f;
+            } else {
+                anim->captured_target_x[j] = 8.5f;
+                anim->captured_target_z[j] = (float)(black_eaten_base++) * 0.65f;
+            }
+        }
+    }
+}
+
 void graphics_render_scene(GraphicsContext *gfx, const GameState *game, const Camera *cam, float aspect_ratio, const MoveList *valid_moves, PieceAnim *anim, double current_time) {
     glUseProgram(gfx->basic_shader);
     
@@ -411,34 +471,59 @@ void graphics_render_scene(GraphicsContext *gfx, const GameState *game, const Ca
     
     bool is_animating_capture = false;
     float cap_x = 0.0f, cap_y = 0.2f, cap_z = 0.0f;
+    int current_flying_cap_idx = -1;
+    
+    double total_move_duration = 0.0;
+    double total_cap_duration = 0.0;
+    double elapsed = 0.0;
     
     if (anim && anim->active) {
-        double elapsed = current_time - anim->start_time;
-        double total_duration = anim->move_duration + (anim->has_capture ? anim->capture_duration : 0.0);
+        total_move_duration = (double)anim->jump_count * anim->step_move_duration;
+        total_cap_duration = (double)anim->capture_count * anim->step_cap_duration;
+        double total_duration = total_move_duration + total_cap_duration;
         
+        elapsed = current_time - anim->start_time;
         if (elapsed >= total_duration) {
             anim->active = false;
+        } else if (elapsed < total_move_duration) {
+            // Stage 1: Moving piece jumps through each waypoint in the path
+            is_animating_move = true;
+            int step = (int)(elapsed / anim->step_move_duration);
+            if (step >= anim->jump_count) step = anim->jump_count - 1;
+            
+            double step_elapsed = elapsed - (double)step * anim->step_move_duration;
+            float step_t = (float)(step_elapsed / anim->step_move_duration);
+            if (step_t > 1.0f) step_t = 1.0f;
+            float smooth_step_t = step_t * step_t * (3.0f - 2.0f * step_t);
+            
+            int f_row = anim->path_rows[step];
+            int f_col = anim->path_cols[step];
+            int t_row = anim->path_rows[step + 1];
+            int t_col = anim->path_cols[step + 1];
+            
+            anim_x = (float)f_col + ((float)t_col - (float)f_col) * smooth_step_t;
+            anim_z = (float)f_row + ((float)t_row - (float)f_row) * smooth_step_t;
+            anim_y = 0.2f + sinf(smooth_step_t * (float)M_PI) * 0.5f;
         } else {
-            // Stage 1: Move jump animation (0.0 to move_duration)
-            float move_t = (float)(elapsed / anim->move_duration);
-            if (move_t > 1.0f) move_t = 1.0f;
-            float smooth_move_t = move_t * move_t * (3.0f - 2.0f * move_t);
-            
-            is_animating_move = (move_t < 1.0f);
-            anim_x = (float)anim->from_col + ((float)anim->to_col - (float)anim->from_col) * smooth_move_t;
-            anim_z = (float)anim->from_row + ((float)anim->to_row - (float)anim->from_row) * smooth_move_t;
-            anim_y = 0.2f + sinf(smooth_move_t * (float)M_PI) * 0.5f;
-            
-            // Stage 2: Captured piece arc animation to side border (starts AFTER move_duration)
-            if (anim->has_capture && elapsed >= anim->move_duration) {
-                double cap_elapsed = elapsed - anim->move_duration;
-                float cap_t = (float)(cap_elapsed / anim->capture_duration);
+            // Stage 2: Captured pieces fly out one by one in chronological capture order
+            double cap_elapsed = elapsed - total_move_duration;
+            int cap_idx = (int)(cap_elapsed / anim->step_cap_duration);
+            if (cap_idx < anim->capture_count) {
+                is_animating_capture = true;
+                current_flying_cap_idx = cap_idx;
+                
+                double this_cap_elapsed = cap_elapsed - (double)cap_idx * anim->step_cap_duration;
+                float cap_t = (float)(this_cap_elapsed / anim->step_cap_duration);
                 if (cap_t > 1.0f) cap_t = 1.0f;
                 float smooth_cap_t = cap_t * cap_t * (3.0f - 2.0f * cap_t);
                 
-                is_animating_capture = (cap_t < 1.0f);
-                cap_x = (float)anim->captured_col + (anim->captured_target_x - (float)anim->captured_col) * smooth_cap_t;
-                cap_z = (float)anim->captured_row + (anim->captured_target_z - (float)anim->captured_row) * smooth_cap_t;
+                int c_row = anim->captured_rows[cap_idx];
+                int c_col = anim->captured_cols[cap_idx];
+                float target_x = anim->captured_target_x[cap_idx];
+                float target_z = anim->captured_target_z[cap_idx];
+                
+                cap_x = (float)c_col + (target_x - (float)c_col) * smooth_cap_t;
+                cap_z = (float)c_row + (target_z - (float)c_row) * smooth_cap_t;
                 cap_y = 0.2f + sinf(smooth_cap_t * (float)M_PI) * 1.3f;
             }
         }
@@ -449,24 +534,43 @@ void graphics_render_scene(GraphicsContext *gfx, const GameState *game, const Ca
         int r = SQ_TO_ROW(sq);
         int c = SQ_TO_COL(sq);
         
-        // Hide static piece at destination while moving
-        if (is_animating_move && r == anim->to_row && c == anim->to_col) {
-            continue;
-        }
-        
-        // Hide captured piece on board once Stage 2 starts
-        if (anim && anim->active && anim->has_capture && (current_time - anim->start_time) >= anim->move_duration && r == anim->captured_row && c == anim->captured_col) {
-            continue;
-        }
-        
-        PieceType p = board_get_piece_at(&game->board, sq);
-        // If this tile had a piece captured in the current active animation,
-        // keep rendering the captured piece statically on its tile during Stage 1 (before Stage 2 fly-out starts)
-        if (p == PIECE_NONE && anim && anim->active && anim->has_capture && r == anim->captured_row && c == anim->captured_col) {
-            double elapsed = current_time - anim->start_time;
-            if (elapsed < anim->move_duration) {
-                p = anim->captured_type;
+        // Hide static piece at final destination while moving piece is jumping (Stage 1)
+        if (is_animating_move && anim && anim->active) {
+            int dest_row = anim->path_rows[anim->jump_count];
+            int dest_col = anim->path_cols[anim->jump_count];
+            if (r == dest_row && c == dest_col) {
+                continue;
             }
+        }
+        
+        // Check if this square is one of the captured pieces from active animation
+        int cap_match_idx = -1;
+        if (anim && anim->active && anim->capture_count > 0) {
+            for (int j = 0; j < anim->capture_count; j++) {
+                if (r == anim->captured_rows[j] && c == anim->captured_cols[j]) {
+                    cap_match_idx = j;
+                    break;
+                }
+            }
+        }
+        
+        PieceType p = PIECE_NONE;
+        if (cap_match_idx >= 0) {
+            if (elapsed < total_move_duration) {
+                // During Stage 1 (jumps): captured piece is still sitting on its square
+                p = anim->captured_types[cap_match_idx];
+            } else {
+                // During Stage 2 (captures fly-out):
+                // If it's waiting for its turn (j > current_flying_cap_idx), keep rendering it on board
+                if (cap_match_idx > current_flying_cap_idx) {
+                    p = anim->captured_types[cap_match_idx];
+                } else {
+                    // If it is flying or already flown out, do not draw statically on board
+                    continue;
+                }
+            }
+        } else {
+            p = board_get_piece_at(&game->board, sq);
         }
         
         if (p == PIECE_NONE) continue;
@@ -491,24 +595,32 @@ void graphics_render_scene(GraphicsContext *gfx, const GameState *game, const Ca
     }
 
     // Draw active captured flying piece
-    if (is_animating_capture && anim) {
+    if (is_animating_capture && anim && current_flying_cap_idx >= 0) {
         glm_mat4_identity(model);
         glm_translate(model, (vec3){cap_x, cap_y, cap_z});
-        vec4 *p_col = is_piece_white(anim->captured_type) ? &white_piece_color : &black_piece_color;
-        bool is_dama = is_piece_dama(anim->captured_type);
+        PieceType cap_type = anim->captured_types[current_flying_cap_idx];
+        vec4 *p_col = is_piece_white(cap_type) ? &white_piece_color : &black_piece_color;
+        bool is_dama = is_piece_dama(cap_type);
         draw_piece(gfx, model, *p_col, select_highlight, is_dama);
     }
 
-    // 4. Draw Eaten Pieces on Side Borders (hide the last added piece until capture animation finishes)
+    // 4. Draw Eaten Pieces on Side Borders (only draw pieces that have completed their fly-out)
     int white_eaten_draw = game->white_eaten_count;
     int black_eaten_draw = game->black_eaten_count;
     
-    if (anim && anim->active && anim->has_capture) {
-        double elapsed = current_time - anim->start_time;
-        if (elapsed < (anim->move_duration + anim->capture_duration)) {
-            if (is_piece_black(anim->captured_type) && white_eaten_draw > 0) {
+    if (anim && anim->active && anim->capture_count > 0) {
+        int completed_caps = 0;
+        if (elapsed >= total_move_duration) {
+            double cap_elapsed = elapsed - total_move_duration;
+            completed_caps = (int)(cap_elapsed / anim->step_cap_duration);
+            if (completed_caps > anim->capture_count) completed_caps = anim->capture_count;
+        }
+        
+        for (int k = completed_caps; k < anim->capture_count; k++) {
+            PieceType ct = anim->captured_types[k];
+            if (is_piece_black(ct) && white_eaten_draw > 0) {
                 white_eaten_draw--;
-            } else if (is_piece_white(anim->captured_type) && black_eaten_draw > 0) {
+            } else if (is_piece_white(ct) && black_eaten_draw > 0) {
                 black_eaten_draw--;
             }
         }
@@ -530,3 +642,4 @@ void graphics_render_scene(GraphicsContext *gfx, const GameState *game, const Ca
         draw_piece(gfx, model, white_piece_color, no_highlight, is_dama);
     }
 }
+

@@ -119,6 +119,9 @@ static bool boards_equal(const Board *a, const Board *b) {
 // Rollout evaluation cutoff with WLD tablebase integration
 static float evaluate_rollout_terminal(const GameState *sim_state, Player ai_player) {
     if (sim_state->is_game_over) {
+        if (sim_state->is_draw) {
+            return 0.5f; // Draw by threefold repetition
+        }
         if (sim_state->winner == ai_player) {
             return 1.0f; // Win
         } else {
@@ -126,7 +129,7 @@ static float evaluate_rollout_terminal(const GameState *sim_state, Player ai_pla
         }
     }
 
-    // Exact Endgame Tablebase Probe (<= 4 pieces)
+    // Exact Endgame Tablebase Probe (<= 5 pieces)
     if (wld_db_is_endgame(&sim_state->board)) {
         WLDValue wld = wld_db_probe(sim_state);
         if (wld == WLD_WIN_WHITE) {
@@ -137,6 +140,7 @@ static float evaluate_rollout_terminal(const GameState *sim_state, Player ai_pla
             return 0.5f;
         }
     }
+
     
     // Heuristic material evaluation at cutoff
     int w_men = __builtin_popcount(sim_state->board.white_men);
@@ -199,7 +203,7 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
             uint32_t fc = s_node_pool[st->root_idx].first_child_idx;
             uint8_t nc = s_node_pool[st->root_idx].num_children;
             for (uint8_t i = 0; i < nc; i++) {
-                if (s_node_pool[fc + i].move == st->prev_ai_move) {
+                if (move_equals(s_node_pool[fc + i].move, st->prev_ai_move)) {
                     ai_child_idx = fc + i;
                     break;
                 }

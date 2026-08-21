@@ -451,6 +451,26 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
         ui_add_quad(menu_btn_x, 20.0f, 160.0f, 45.0f, btn_normal);
         ui_add_text_centered("MENU", menu_btn_x + 80.0f, 42.0f, 1.4f, text_white);
         
+        // Repetition Warning Indicator (Visible only if current position has been repeated 2 times, i.e. 1 repetition to draw)
+        if (!game->is_game_over) {
+            int rep_count = game_get_repetition_count(game);
+            if (rep_count == 2) {
+                float rep_w = 340.0f;
+                float rep_h = 46.0f;
+                float rep_x = 20.0f;
+                float rep_y = 78.0f;
+
+                vec4 warn_border = { 0.95f, 0.60f, 0.10f, 0.90f }; // Vivid Amber Border
+                vec4 warn_glass  = { 0.22f, 0.14f, 0.05f, 0.90f }; // Warm Dark Amber Glass
+                vec4 text_warn   = { 1.00f, 0.75f, 0.20f, 1.00f }; // Bright Gold
+
+                ui_add_quad(rep_x - 2.0f, rep_y - 2.0f, rep_w + 4.0f, rep_h + 4.0f, warn_border);
+                ui_add_quad(rep_x, rep_y, rep_w, rep_h, warn_glass);
+                ui_add_text_centered("AVVISO PATTA (RIPETIZIONE 2/3)", rep_x + rep_w * 0.5f, rep_y + 16.0f, 0.95f, text_warn);
+                ui_add_text_centered("1 RIPETIZIONE RIMASTA ALLA PATTA", rep_x + rep_w * 0.5f, rep_y + 32.0f, 0.90f, text_white);
+            }
+        }
+        
         // Game Over Overlay Modal with solid dark background panel
         if (game->is_game_over) {
             // Fullscreen backdrop overlay for modal
@@ -466,8 +486,12 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             
             ui_add_text_centered("PARTITA FINITA!", o_x + o_w * 0.5f, o_y + 40.0f, 2.0f, text_gold);
             
-            const char *win_msg = (game->winner == PLAYER_WHITE) ? "HA VINTO IL BIANCO!" : "HA VINTO IL NERO!";
-            ui_add_text_centered(win_msg, o_x + o_w * 0.5f, o_y + 85.0f, 1.5f, text_white);
+            if (game->is_draw) {
+                ui_add_text_centered("PATTA PER RIPETIZIONE (3/3)", o_x + o_w * 0.5f, o_y + 85.0f, 1.3f, text_gold);
+            } else {
+                const char *win_msg = (game->winner == PLAYER_WHITE) ? "HA VINTO IL BIANCO!" : "HA VINTO IL NERO!";
+                ui_add_text_centered(win_msg, o_x + o_w * 0.5f, o_y + 85.0f, 1.5f, text_white);
+            }
             
             // Restart Button
             float r_w = 240.0f;
@@ -478,6 +502,7 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             ui_add_quad(r_x, r_y, r_w, r_h, btn_start);
             ui_add_text_centered("NUOVA PARTITA", r_x + r_w * 0.5f, r_y + r_h * 0.5f, 1.4f, text_white);
         }
+
     }
     
     ui_end_and_draw(ui_shader, ui->win_w, ui->win_h);

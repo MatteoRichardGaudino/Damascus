@@ -252,7 +252,7 @@ static bool start_kingsrow_process(KingsrowEngineState *ks) {
         return false;
     }
 
-    // Test handshake PING with timeout (4000ms for Wine initialization)
+    // Test handshake PING with timeout (10000ms for Wine initialization)
     fprintf(ks->stream_in, "PING\n");
     fflush(ks->stream_in);
 
@@ -260,8 +260,8 @@ static bool start_kingsrow_process(KingsrowEngineState *ks) {
     int fd_read = fileno(ks->stream_out);
     bool got_ready = false;
     bool got_pong = false;
-    for (int attempts = 0; attempts < 10; attempts++) {
-        if (read_line_with_timeout(fd_read, reply, sizeof(reply), 4000)) {
+    for (int attempts = 0; attempts < 20; attempts++) {
+        if (read_line_with_timeout(fd_read, reply, sizeof(reply), 5000)) {
             if (strncmp(reply, "READY", 5) == 0) got_ready = true;
             if (strncmp(reply, "PONG", 4) == 0) got_pong = true;
             if (got_ready && got_pong) {
@@ -312,7 +312,7 @@ Move engine_kingsrow_get_move(void *state, const GameState *game) {
     }
 
     int color = (game->current_player == PLAYER_WHITE) ? CB_WHITE : CB_BLACK;
-    double maxtime = 1.0;
+    double maxtime = 0.50; // High quality 500ms search
 
     // Convert Damascus bitboard to CheckerBoard format: b[col_x][row_y]
     int b[8][8];
@@ -363,7 +363,8 @@ Move engine_kingsrow_get_move(void *state, const GameState *game) {
     char response[1024] = "";
     int fd_read = fileno(ks->stream_out);
     bool got_move = false;
-    while (read_line_with_timeout(fd_read, response, sizeof(response), (int)(maxtime * 1000) + 6000)) {
+    // Allow up to 25 seconds for first search (tablebase loading) and generous headroom for subsequent searches
+    while (read_line_with_timeout(fd_read, response, sizeof(response), (int)(maxtime * 1000) + 25000)) {
         if (strncmp(response, "MOVE ", 5) == 0) {
             got_move = true;
             break;

@@ -17,7 +17,7 @@ typedef struct {
     float    wins;            // w: reward totale accumulato
     uint32_t parent_idx;      // Indice del padre (UINT32_MAX se radice)
     uint32_t first_child_idx; // Indice del primo figlio nel pool (UINT32_MAX se non ancora espanso)
-    uint16_t move;            // Mossa eseguita per raggiungere questo stato (from, to, flag)
+    Move     move;            // Mossa eseguita per raggiungere questo stato (from, to, flag)
     uint8_t  num_children;    // Numero totale di mosse legali generate
     uint8_t  unexpanded_idx;  // Quanti figli sono già stati espansi/simulati
 } MCTSNode;

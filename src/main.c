@@ -101,7 +101,7 @@ int main(void) {
                 camera_reset_menu_anim(&cam);
             }
             
-            if (!handled_by_ui && ui.state == UI_STATE_PLAYING && !game.is_game_over) {
+            if (!piece_anim.active && !handled_by_ui && ui.state == UI_STATE_PLAYING && !game.is_game_over) {
                 // Determine if current player is Human
                 bool is_human = false;
                 if (game.mode == MODE_2PLAYER) {
@@ -135,35 +135,7 @@ int main(void) {
                                 for (int m = 0; m < valid_moves->count; m++) {
                                     Move mv = valid_moves->moves[m];
                                     if (MOVE_FROM(mv) == sel_sq && MOVE_TO(mv) == picked_sq) {
-                                        // Trigger 3D jumping piece arc animation
-                                        piece_anim.active = true;
-                                        piece_anim.from_row = SQ_TO_ROW(MOVE_FROM(mv));
-                                        piece_anim.from_col = SQ_TO_COL(MOVE_FROM(mv));
-                                        piece_anim.to_row = SQ_TO_ROW(MOVE_TO(mv));
-                                        piece_anim.to_col = SQ_TO_COL(MOVE_TO(mv));
-                                        piece_anim.piece_type = board_get_piece_at(&game.board, MOVE_FROM(mv));
-                                        piece_anim.start_time = current_time;
-                                        piece_anim.move_duration = 0.30;
-                                        piece_anim.capture_duration = 0.35;
-                                        
-                                        if (MOVE_IS_CAP(mv)) {
-                                            int cap_sq = GET_CAPTURED_SQ(MOVE_FROM(mv), MOVE_TO(mv));
-                                            piece_anim.has_capture = true;
-                                            piece_anim.captured_row = SQ_TO_ROW(cap_sq);
-                                            piece_anim.captured_col = SQ_TO_COL(cap_sq);
-                                            piece_anim.captured_type = board_get_piece_at(&game.board, cap_sq);
-                                            
-                                            if (is_piece_black(piece_anim.captured_type)) {
-                                                piece_anim.captured_target_x = -1.5f;
-                                                piece_anim.captured_target_z = (float)(game.white_eaten_count) * 0.65f;
-                                            } else {
-                                                piece_anim.captured_target_x = 8.5f;
-                                                piece_anim.captured_target_z = (float)(game.black_eaten_count) * 0.65f;
-                                            }
-                                        } else {
-                                            piece_anim.has_capture = false;
-                                        }
-                                        
+                                        piece_anim_start(&piece_anim, &game, mv, current_time);
                                         game_execute_move(&game, mv);
                                         game.selected_row = -1;
                                         game.selected_col = -1;
@@ -227,40 +199,8 @@ int main(void) {
                         ui.has_black_ai_time = true;
                     }
 
-                    if (cpu_move != MOVE_NONE) {
-                        double anim_start = glfwGetTime();
-                        int from_sq = MOVE_FROM(cpu_move);
-                        int to_sq = MOVE_TO(cpu_move);
-
-                        // Trigger 3D jumping piece arc animation for CPU
-                        piece_anim.active = true;
-                        piece_anim.from_row = SQ_TO_ROW(from_sq);
-                        piece_anim.from_col = SQ_TO_COL(from_sq);
-                        piece_anim.to_row = SQ_TO_ROW(to_sq);
-                        piece_anim.to_col = SQ_TO_COL(to_sq);
-                        piece_anim.piece_type = board_get_piece_at(&game.board, from_sq);
-                        piece_anim.start_time = anim_start;
-                        piece_anim.move_duration = 0.30;
-                        piece_anim.capture_duration = 0.35;
-                        
-                        if (MOVE_IS_CAP(cpu_move)) {
-                            int cap_sq = GET_CAPTURED_SQ(from_sq, to_sq);
-                            piece_anim.has_capture = true;
-                            piece_anim.captured_row = SQ_TO_ROW(cap_sq);
-                            piece_anim.captured_col = SQ_TO_COL(cap_sq);
-                            piece_anim.captured_type = board_get_piece_at(&game.board, cap_sq);
-                            
-                            if (is_piece_black(piece_anim.captured_type)) {
-                                piece_anim.captured_target_x = -1.5f;
-                                piece_anim.captured_target_z = (float)(game.white_eaten_count) * 0.65f;
-                            } else {
-                                piece_anim.captured_target_x = 8.5f;
-                                piece_anim.captured_target_z = (float)(game.black_eaten_count) * 0.65f;
-                            }
-                        } else {
-                            piece_anim.has_capture = false;
-                        }
-                        
+                    if (!move_is_none(cpu_move)) {
+                        piece_anim_start(&piece_anim, &game, cpu_move, glfwGetTime());
                         game_execute_move(&game, cpu_move);
                         game.selected_row = -1;
                         game.selected_col = -1;

@@ -38,29 +38,37 @@ typedef struct {
     uint32_t black_kings; // 32 bit: Dame nere
 } Board;
 
-// 16-bit Move representation
-// Bits 0..4  (5 bit): from_sq (0..31)
-// Bits 5..9  (5 bit): to_sq   (0..31)
-// Bits 10..11(2 bit): piece_type (0=PAWN, 1=DAMA)
-// Bit 12     (1 bit): prom (1 if promotion)
-// Bit 13     (1 bit): cap  (1 if capture)
-// Bits 14..15(2 bit): reserved (0)
-typedef uint16_t Move;
+// Rich Move representation supporting multi-jumps (Dama Italiana FID)
+typedef struct {
+    uint8_t  from;       // Starting square (0..31, or 0xFF for MOVE_NONE)
+    uint8_t  to;         // Final destination square (0..31)
+    uint8_t  piece_type; // 0 = PAWN, 1 = DAMA
+    uint8_t  is_prom;    // 1 if promoted to Dama during the move
+    uint8_t  is_cap;     // 1 if capture move
+    uint8_t  jumps;      // Number of jumped pieces (0 for quiet move, 1..N for capture)
+    uint8_t  path[8];    // Intermediate path: path[0]=from, path[1..jumps]=landing squares
+    uint8_t  caps[8];    // Squares of captured pieces in chronological order
+    uint32_t cap_mask;   // Bitmask of captured squares (1U << cap_sq)
+} Move;
 
-#define MOVE_NONE ((Move)0xFFFF)
+#define MOVE_NONE ((Move){ .from = 0xFF, .to = 0xFF, .piece_type = 0, .is_prom = 0, .is_cap = 0, .jumps = 0, .cap_mask = 0 })
 
-#define MOVE_CREATE(from, to, type, prom, cap) \
-    ((uint16_t)(((uint16_t)(from) & 0x1F) | \
-    (((uint16_t)(to) & 0x1F) << 5) | \
-    (((uint16_t)(type) & 0x3) << 10) | \
-    (((uint16_t)(prom) & 0x1) << 12) | \
-    (((uint16_t)(cap) & 0x1) << 13)))
+static inline bool move_is_none(Move m) {
+    return m.from == 0xFF || m.from > 31;
+}
 
-#define MOVE_FROM(m)        ((uint8_t)((m) & 0x1F))
-#define MOVE_TO(m)          ((uint8_t)(((m) >> 5) & 0x1F))
-#define MOVE_TYPE(m)        ((uint8_t)(((m) >> 10) & 0x3))
-#define MOVE_IS_PROM(m)     ((bool)(((m) >> 12) & 0x1))
-#define MOVE_IS_CAP(m)      ((bool)(((m) >> 13) & 0x1))
+static inline bool move_equals(Move a, Move b) {
+    if (move_is_none(a) && move_is_none(b)) return true;
+    if (a.from != b.from || a.to != b.to) return false;
+    if (a.is_cap != b.is_cap || a.jumps != b.jumps) return false;
+    return a.cap_mask == b.cap_mask;
+}
+
+#define MOVE_FROM(m)        ((m).from)
+#define MOVE_TO(m)          ((m).to)
+#define MOVE_TYPE(m)        ((m).piece_type)
+#define MOVE_IS_PROM(m)     ((bool)((m).is_prom))
+#define MOVE_IS_CAP(m)      ((bool)((m).is_cap))
 
 // Coordinate conversions
 #define SQ_TO_ROW(sq)       ((int)((sq) >> 2))
@@ -81,9 +89,19 @@ typedef uint16_t Move;
 
 // Move list structure (statically allocated)
 typedef struct {
-    uint16_t moves[32];
+    Move    moves[48];
     uint8_t count;
 } MoveList;
+
+#define MAX_GAME_HISTORY 512
+
+typedef struct {
+    uint32_t wm;
+    uint32_t wk;
+    uint32_t bm;
+    uint32_t bk;
+    uint8_t  player;
+} PositionKey;
 
 typedef struct {
     Board board;
@@ -103,7 +121,11 @@ typedef struct {
     int selected_col;
     
     bool is_game_over;
+    bool is_draw;
     Player winner;
+    
+    int history_count;
+    PositionKey history[MAX_GAME_HISTORY];
 } GameState;
 
 void game_init(GameState *game, GameMode mode, Player human_player, EngineType white_engine, EngineType black_engine);
@@ -117,8 +139,13 @@ PieceType board_get_piece_at(const Board *board, int sq);
 const MoveList* game_get_valid_moves(const GameState *game);
 bool game_execute_move(GameState *game, Move move);
 
+// Draw and Repetition checkers
+int game_get_repetition_count(const GameState *game);
+bool game_is_threefold_repetition(const GameState *game);
+
 bool is_piece_white(PieceType piece);
 bool is_piece_black(PieceType piece);
 bool is_piece_dama(PieceType piece);
 
 #endif // GAME_H
+

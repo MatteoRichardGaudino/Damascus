@@ -1200,14 +1200,25 @@ Move engine_checkerboard_get_move(void *state, const GameState *game) {
     // Convert CB best move to Damascus coordinates
     int from_row = 7 - g_best_cb_move.from.y;
     int from_col = 7 - g_best_cb_move.from.x;
-    int to_row = (g_best_cb_move.jumps > 0) ? (7 - g_best_cb_move.path[1].y) : (7 - g_best_cb_move.to.y);
-    int to_col = (g_best_cb_move.jumps > 0) ? (7 - g_best_cb_move.path[1].x) : (7 - g_best_cb_move.to.x);
+    int to_row = 7 - g_best_cb_move.to.y;
+    int to_col = 7 - g_best_cb_move.to.x;
 
     int from_sq = ROW_COL_TO_SQ(from_row, from_col);
     int to_sq = ROW_COL_TO_SQ(to_row, to_col);
+    int jumps = g_best_cb_move.jumps;
 
     // Match with valid Damascus moves
     const MoveList *valid_moves = game_get_valid_moves(game);
+
+    // 1. Exact match on from, to, and jump count
+    for (int i = 0; i < valid_moves->count; i++) {
+        Move m = valid_moves->moves[i];
+        if (MOVE_FROM(m) == from_sq && MOVE_TO(m) == to_sq && m.jumps == jumps) {
+            return m;
+        }
+    }
+
+    // 2. Match on from and to
     for (int i = 0; i < valid_moves->count; i++) {
         Move m = valid_moves->moves[i];
         if (MOVE_FROM(m) == from_sq && MOVE_TO(m) == to_sq) {
@@ -1215,7 +1226,7 @@ Move engine_checkerboard_get_move(void *state, const GameState *game) {
         }
     }
 
-    // If exact single-step match not found directly, find matching piece start
+    // 3. Match on from
     for (int i = 0; i < valid_moves->count; i++) {
         Move m = valid_moves->moves[i];
         if (MOVE_FROM(m) == from_sq) {
@@ -1223,7 +1234,7 @@ Move engine_checkerboard_get_move(void *state, const GameState *game) {
         }
     }
 
-    // Fallback to first valid move if any
+    // 4. Fallback to first valid move if any
     if (valid_moves->count > 0) return valid_moves->moves[0];
     return MOVE_NONE;
 }

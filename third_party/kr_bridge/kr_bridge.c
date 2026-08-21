@@ -30,11 +30,14 @@ struct CBmove {
     int delpiece[12];
 };
 
-typedef int (*CB_GETMOVE)(int board[8][8], int color, double maxtime, char str[1024], int *playnow, int info, int unused, struct CBmove *move);
-typedef int (*CB_GETSTRING)(char str[255]);
-typedef int (*CB_ENGINECOMMAND)(const char *command, char reply[1024]);
+typedef int (WINAPI *CB_GETMOVE)(int board[8][8], int color, double maxtime, char str[1024], int *playnow, int info, int unused, struct CBmove *move);
+typedef int (WINAPI *CB_GETSTRING)(char str[255]);
+typedef int (WINAPI *CB_ENGINECOMMAND)(const char *command, char reply[1024]);
 
 int main(int argc, char *argv[]) {
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stdin, NULL, _IONBF, 0);
+
     const char *dll_path = "kr_italian64.dll";
     if (argc > 1) {
         dll_path = argv[1];
@@ -56,16 +59,11 @@ int main(int argc, char *argv[]) {
         return 2;
     }
 
-    // Set line buffering
-    setvbuf(stdout, NULL, _IOLBF, 0);
-    setvbuf(stdin, NULL, _IOLBF, 0);
-
     printf("READY %s\n", dll_path);
     fflush(stdout);
 
     char line[4096];
     while (fgets(line, sizeof(line), stdin)) {
-        // Strip newline
         size_t len = strlen(line);
         while (len > 0 && (line[len - 1] == '\r' || line[len - 1] == '\n')) {
             line[--len] = '\0';
@@ -94,29 +92,18 @@ int main(int argc, char *argv[]) {
             printf("REPLY %s\n", reply);
             fflush(stdout);
         } else if (strncmp(line, "GETMOVE ", 8) == 0) {
-            int color = 0;
+            int color = 1;
             double maxtime = 1.0;
             int board[8][8];
+            memset(board, 0, sizeof(board));
 
             char *ptr = line + 8;
-            color = atoi(ptr);
-            ptr = strchr(ptr, ' ');
-            if (ptr) {
-                ptr++;
-                maxtime = atof(ptr);
-                ptr = strchr(ptr, ' ');
-            }
+            color = (int)strtol(ptr, &ptr, 10);
+            maxtime = strtod(ptr, &ptr);
 
-            if (ptr) {
-                ptr++;
-                for (int x = 0; x < 8; x++) {
-                    for (int y = 0; y < 8; y++) {
-                        if (*ptr == '\0') break;
-                        board[x][y] = atoi(ptr);
-                        ptr = strchr(ptr, ' ');
-                        if (ptr) ptr++;
-                        else break;
-                    }
+            for (int x = 0; x < 8; x++) {
+                for (int y = 0; y < 8; y++) {
+                    board[x][y] = (int)strtol(ptr, &ptr, 10);
                 }
             }
 
@@ -127,8 +114,8 @@ int main(int argc, char *argv[]) {
 
             int res = pGetMove(board, color, maxtime, eval_str, &playnow, 0, 0, &move);
 
-            int to_x = (move.jumps > 0) ? move.path[1].x : move.to.x;
-            int to_y = (move.jumps > 0) ? move.path[1].y : move.to.y;
+            int to_x = move.to.x;
+            int to_y = move.to.y;
 
             printf("MOVE %d %d %d %d %d %d %d %d %s\n",
                    res,

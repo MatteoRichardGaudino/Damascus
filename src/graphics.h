@@ -6,26 +6,31 @@
 #include "game.h"
 #include "camera.h"
 
+#define MAX_JUMP_STEPS 8
+
 typedef struct {
     bool active;
-    int from_row;
-    int from_col;
-    int to_row;
-    int to_col;
-    PieceType piece_type;
     
-    // Sequential capture arc animation to side border
-    bool has_capture;
-    int captured_row;
-    int captured_col;
-    PieceType captured_type;
-    float captured_target_x;
-    float captured_target_z;
+    // Multi-jump waypoint path for the moving piece
+    int jump_count; // Number of intermediate jumps (1 for quiet move or single jump, 2..8 for multi-capture)
+    int path_rows[MAX_JUMP_STEPS + 1];
+    int path_cols[MAX_JUMP_STEPS + 1];
+    PieceType piece_type;
+    bool is_prom;
+    
+    // Sequential captured pieces fly-out
+    int capture_count; // 0 for quiet move, 1..8 for capture
+    int captured_rows[MAX_JUMP_STEPS];
+    int captured_cols[MAX_JUMP_STEPS];
+    PieceType captured_types[MAX_JUMP_STEPS];
+    float captured_target_x[MAX_JUMP_STEPS];
+    float captured_target_z[MAX_JUMP_STEPS];
     
     double start_time;
-    double move_duration;    // Stage 1: Piece move jump
-    double capture_duration; // Stage 2: Captured piece fly-out to side (starts after move_duration)
+    double step_move_duration; // Duration for each individual jump arc (e.g. 0.22s)
+    double step_cap_duration;  // Duration for each individual capture fly-out (e.g. 0.28s)
 } PieceAnim;
+
 
 typedef struct {
     GLuint vao;
@@ -57,5 +62,6 @@ bool graphics_init(GraphicsContext *gfx);
 void graphics_cleanup(GraphicsContext *gfx);
 
 void graphics_render_scene(GraphicsContext *gfx, const GameState *game, const Camera *cam, float aspect_ratio, const MoveList *valid_moves, PieceAnim *anim, double current_time);
+void piece_anim_start(PieceAnim *anim, const GameState *game, Move mv, double current_time);
 
 #endif // GRAPHICS_H
