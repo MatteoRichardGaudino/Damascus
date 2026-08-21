@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -32,9 +33,15 @@ Move engine_random_get_move(void *state, const GameState *game) {
         return MOVE_NONE;
     }
     
-    if (st) st->move_counter++;
-    int index = rand() % list->count;
-    return list->moves[index];
+    if (st) {
+        st->move_counter++;
+        st->seed ^= st->seed << 13;
+        st->seed ^= st->seed >> 17;
+        st->seed ^= st->seed << 5;
+        int index = (int)(st->seed % list->count);
+        return list->moves[index];
+    }
+    return list->moves[0];
 }
 
 void engine_random_cleanup(void *state) {
@@ -155,19 +162,46 @@ void engine_destroy(Engine *engine) {
 
 void engine_config_init_default(EngineConfig *cfg) {
     if (!cfg) return;
-    cfg->mcts_time_budget = 3.0;
+    cfg->mcts_time_budget = 1.0;
     cfg->mcts_exploration = 1.41421356f;
     cfg->mcts_max_rollout_depth = 70;
+    cfg->mcts_rollout_epsilon = 0.15f;
     cfg->mcts_use_db = true;
     cfg->mcts_debug_log = false;
-    cfg->puct_time_budget = 3.0;
+    cfg->puct_time_budget = 1.0;
     cfg->puct_c_puct = 1.5f;
     cfg->puct_temperature = 1.0f;
     cfg->puct_max_rollout_depth = 70;
+    cfg->puct_rollout_epsilon = 0.15f;
     cfg->puct_use_db = true;
     cfg->puct_debug_log = false;
     cfg->cb_search_time = 1.0;
     cfg->kr_search_time = 1.0;
+}
+
+void engine_config_set_time_profile(EngineConfig *cfg, TimeProfile profile) {
+    if (!cfg) return;
+    double t = 1.0;
+    switch (profile) {
+        case TIME_PROFILE_FAST:   t = 0.20; break;
+        case TIME_PROFILE_MEDIUM: t = 1.00; break;
+        case TIME_PROFILE_SLOW:   t = 3.00; break;
+        case TIME_PROFILE_CUSTOM:
+        default: return;
+    }
+    cfg->mcts_time_budget = t;
+    cfg->puct_time_budget = t;
+    cfg->cb_search_time = t;
+    cfg->kr_search_time = t;
+}
+
+TimeProfile engine_config_get_time_profile(const EngineConfig *cfg) {
+    if (!cfg) return TIME_PROFILE_CUSTOM;
+    double t = cfg->mcts_time_budget;
+    if (fabs(t - 0.20) < 0.05 && fabs(cfg->puct_time_budget - 0.20) < 0.05) return TIME_PROFILE_FAST;
+    if (fabs(t - 1.00) < 0.05 && fabs(cfg->puct_time_budget - 1.00) < 0.05) return TIME_PROFILE_MEDIUM;
+    if (fabs(t - 3.00) < 0.05 && fabs(cfg->puct_time_budget - 3.00) < 0.05) return TIME_PROFILE_SLOW;
+    return TIME_PROFILE_CUSTOM;
 }
 
 void engine_apply_config(Engine *engine, EngineType type, const EngineConfig *cfg) {
@@ -178,6 +212,7 @@ void engine_apply_config(Engine *engine, EngineType type, const EngineConfig *cf
             engine_mcts_ucb1_set_time_budget(engine->internal_state, cfg->mcts_time_budget);
             engine_mcts_ucb1_set_exploration(engine->internal_state, cfg->mcts_exploration);
             engine_mcts_ucb1_set_max_rollout_depth(engine->internal_state, cfg->mcts_max_rollout_depth);
+            engine_mcts_ucb1_set_rollout_epsilon(engine->internal_state, cfg->mcts_rollout_epsilon);
             engine_mcts_ucb1_set_use_db(engine->internal_state, cfg->mcts_use_db);
             engine_mcts_ucb1_set_debug_log(engine->internal_state, cfg->mcts_debug_log);
             break;
@@ -186,6 +221,7 @@ void engine_apply_config(Engine *engine, EngineType type, const EngineConfig *cf
             engine_mcts_puct_set_c_puct(engine->internal_state, cfg->puct_c_puct);
             engine_mcts_puct_set_temperature(engine->internal_state, cfg->puct_temperature);
             engine_mcts_puct_set_max_rollout_depth(engine->internal_state, cfg->puct_max_rollout_depth);
+            engine_mcts_puct_set_rollout_epsilon(engine->internal_state, cfg->puct_rollout_epsilon);
             engine_mcts_puct_set_use_db(engine->internal_state, cfg->puct_use_db);
             engine_mcts_puct_set_debug_log(engine->internal_state, cfg->puct_debug_log);
             break;

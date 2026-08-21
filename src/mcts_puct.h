@@ -2,6 +2,7 @@
 #define MCTS_PUCT_H
 
 #include "engine.h"
+#include "transposition.h"
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -11,9 +12,11 @@
 #define PUCT_DEFAULT_TEMPERATURE    1.0f
 #define PUCT_DEFAULT_TIME_BUDGET    1.0
 #define PUCT_MAX_ROLLOUT_DEPTH      70
+#define PUCT_DEFAULT_ROLLOUT_EPSILON 0.15f
 
-// 24-byte Compact Node Structure with prior probability P(s, a)
+// Compact Node Structure with prior probability P(s, a) and 64-bit Zobrist key
 typedef struct {
+    uint64_t hash;            // 64-bit Zobrist key
     uint32_t visits;          // N: total visits
     float    wins;            // w: accumulated reward
     float    prior;           // P(s, a): prior probability from domain heuristic policy
@@ -34,6 +37,7 @@ void engine_mcts_puct_set_time_budget(void *state, double seconds);
 void engine_mcts_puct_set_c_puct(void *state, float c_puct);
 void engine_mcts_puct_set_temperature(void *state, float tau);
 void engine_mcts_puct_set_max_rollout_depth(void *state, int depth);
+void engine_mcts_puct_set_rollout_epsilon(void *state, float epsilon);
 void engine_mcts_puct_set_use_db(void *state, bool enable);
 void engine_mcts_puct_set_debug_log(void *state, bool enable);
 uint32_t engine_mcts_puct_get_node_count(void);

@@ -48,12 +48,12 @@ typedef struct {
     double search_time; // Thinking time in seconds
 } CheckerboardEngineState;
 
-// Internal engine globals for search state
-static int g_alphabetas = 0;
-static int g_playnow = 0;
-static CBCBMove g_best_cb_move;
-static clock_t g_starttime;
-static double g_absolute_maxtime = 1.0;
+// Internal engine globals for search state (per-thread for multithreaded tournaments)
+static _Thread_local int g_alphabetas = 0;
+static _Thread_local int g_playnow = 0;
+static _Thread_local CBCBMove g_best_cb_move;
+static _Thread_local clock_t g_starttime;
+static _Thread_local double g_absolute_maxtime = 1.0;
 
 static CBCoor numbertocoor(int n) {
     CBCoor c;

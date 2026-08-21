@@ -1,4 +1,5 @@
 #include "game.h"
+#include "zobrist.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -12,8 +13,8 @@ static int8_t s_jump_dest[32][4];
 static int8_t s_jump_mid[32][4];
 static bool s_tables_initialized = false;
 
-// Statically allocated MoveList (allocated once for memory efficiency)
-static MoveList g_move_list;
+// Statically allocated MoveList (allocated per-thread for memory efficiency and concurrency)
+static _Thread_local MoveList g_move_list;
 
 typedef struct {
     uint8_t  from;
@@ -30,8 +31,8 @@ typedef struct {
     uint8_t  first_king_step;  // Step index (1..jumps) of first king captured, or 99 if none
 } RawCapture;
 
-static RawCapture s_raw_caps[128];
-static int s_raw_cap_count = 0;
+static _Thread_local RawCapture s_raw_caps[128];
+static _Thread_local int s_raw_cap_count = 0;
 
 static void init_tables(void) {
     if (s_tables_initialized) return;
@@ -98,6 +99,7 @@ PieceType board_get_piece_at(const Board *board, int sq) {
 
 void game_init(GameState *game, GameMode mode, Player human_player, EngineType white_engine, EngineType black_engine) {
     init_tables();
+    zobrist_init();
     memset(game, 0, sizeof(GameState));
     game->mode = mode;
     game->human_player = human_player;
@@ -118,6 +120,9 @@ void game_init(GameState *game, GameMode mode, Player human_player, EngineType w
     game->board.black_men = 0xFFF00000U;
     game->board.black_kings = 0;
 
+    // Compute initial 64-bit Zobrist hash
+    game->hash = zobrist_compute_hash(&game->board, game->current_player);
+
     // Record initial board position in history
     game->history_count = 0;
     game->history[game->history_count++] = (PositionKey){
@@ -125,7 +130,8 @@ void game_init(GameState *game, GameMode mode, Player human_player, EngineType w
         .wk = game->board.white_kings,
         .bm = game->board.black_men,
         .bk = game->board.black_kings,
-        .player = (uint8_t)game->current_player
+        .player = (uint8_t)game->current_player,
+        .hash = game->hash
     };
 }
 
@@ -607,18 +613,10 @@ int game_get_repetition_count(const GameState *game) {
     if (!game || game->history_count == 0) return 0;
     
     int count = 0;
-    uint32_t wm = game->board.white_men;
-    uint32_t wk = game->board.white_kings;
-    uint32_t bm = game->board.black_men;
-    uint32_t bk = game->board.black_kings;
-    uint8_t p = (uint8_t)game->current_player;
+    uint64_t target_hash = game->hash;
 
     for (int i = 0; i < game->history_count; i++) {
-        if (game->history[i].wm == wm &&
-            game->history[i].wk == wk &&
-            game->history[i].bm == bm &&
-            game->history[i].bk == bk &&
-            game->history[i].player == p) {
+        if (game->history[i].hash == target_hash) {
             count++;
         }
     }
@@ -642,14 +640,19 @@ bool game_execute_move(GameState *game, Move move) {
     if (cur == PLAYER_WHITE) {
         if (b->white_men & from_mask) {
             b->white_men &= ~from_mask;
+            game->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_WHITE_MAN][from];
             if (move.is_prom || to >= 28) {
                 b->white_kings |= to_mask;
+                game->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_WHITE_KING][to];
             } else {
                 b->white_men |= to_mask;
+                game->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_WHITE_MAN][to];
             }
         } else if (b->white_kings & from_mask) {
             b->white_kings &= ~from_mask;
             b->white_kings |= to_mask;
+            game->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_WHITE_KING][from];
+            game->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_WHITE_KING][to];
         } else {
             return false;
         }
@@ -662,9 +665,11 @@ bool game_execute_move(GameState *game, Move move) {
                 if (b->black_men & cmask) {
                     b->black_men &= ~cmask;
                     cap_type = PIECE_BLACK_PAWN;
+                    game->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_BLACK_MAN][cap_sq];
                 } else if (b->black_kings & cmask) {
                     b->black_kings &= ~cmask;
                     cap_type = PIECE_BLACK_DAMA;
+                    game->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_BLACK_KING][cap_sq];
                 }
                 if (game->white_eaten_count < 12 && cap_type != PIECE_NONE) {
                     game->white_eaten_list[game->white_eaten_count++] = cap_type;
@@ -674,14 +679,19 @@ bool game_execute_move(GameState *game, Move move) {
     } else {
         if (b->black_men & from_mask) {
             b->black_men &= ~from_mask;
+            game->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_BLACK_MAN][from];
             if (move.is_prom || to <= 3) {
                 b->black_kings |= to_mask;
+                game->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_BLACK_KING][to];
             } else {
                 b->black_men |= to_mask;
+                game->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_BLACK_MAN][to];
             }
         } else if (b->black_kings & from_mask) {
             b->black_kings &= ~from_mask;
             b->black_kings |= to_mask;
+            game->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_BLACK_KING][from];
+            game->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_BLACK_KING][to];
         } else {
             return false;
         }
@@ -694,9 +704,11 @@ bool game_execute_move(GameState *game, Move move) {
                 if (b->white_men & cmask) {
                     b->white_men &= ~cmask;
                     cap_type = PIECE_WHITE_PAWN;
+                    game->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_WHITE_MAN][cap_sq];
                 } else if (b->white_kings & cmask) {
                     b->white_kings &= ~cmask;
                     cap_type = PIECE_WHITE_DAMA;
+                    game->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_WHITE_KING][cap_sq];
                 }
                 if (game->black_eaten_count < 12 && cap_type != PIECE_NONE) {
                     game->black_eaten_list[game->black_eaten_count++] = cap_type;
@@ -706,6 +718,7 @@ bool game_execute_move(GameState *game, Move move) {
     }
     
     // Switch turn
+    game->hash ^= g_zobrist_player;
     game->current_player = (cur == PLAYER_WHITE) ? PLAYER_BLACK : PLAYER_WHITE;
     
     // Record new state in history
@@ -715,7 +728,8 @@ bool game_execute_move(GameState *game, Move move) {
             .wk = game->board.white_kings,
             .bm = game->board.black_men,
             .bk = game->board.black_kings,
-            .player = (uint8_t)game->current_player
+            .player = (uint8_t)game->current_player,
+            .hash = game->hash
         };
     }
     

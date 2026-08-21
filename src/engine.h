@@ -15,6 +15,7 @@ typedef struct {
     double mcts_time_budget;       // Seconds (e.g. 0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0)
     float  mcts_exploration;       // UCB1 Alpha (e.g. 0.5, 0.8, 1.0, 1.414, 1.8, 2.2, 2.8)
     int    mcts_max_rollout_depth; // Max simulation depth (e.g. 20, 35, 50, 70, 100, 150, 200)
+    float  mcts_rollout_epsilon;   // Biased rollout exploration rate (e.g. 0.05, 0.15, 0.30, 1.0)
     bool   mcts_use_db;            // Enable/disable instant WLD tablebase mode (true/false)
     bool   mcts_debug_log;         // Enable/disable verbose console debug logging for MCTS
 
@@ -23,6 +24,7 @@ typedef struct {
     float  puct_c_puct;            // Exploration constant c_puct (e.g. 1.5)
     float  puct_temperature;       // Softmax temperature tau (e.g. 1.0)
     int    puct_max_rollout_depth; // Max simulation depth (e.g. 20, 70, 150)
+    float  puct_rollout_epsilon;   // Biased rollout exploration rate (e.g. 0.05, 0.15, 0.30, 1.0)
     bool   puct_use_db;            // Enable/disable instant WLD tablebase mode (true/false)
     bool   puct_debug_log;         // Enable/disable verbose console debug logging for PUCT
 
@@ -34,10 +36,19 @@ typedef struct {
 } EngineConfig;
 
 
+typedef enum {
+    TIME_PROFILE_CUSTOM = 0,
+    TIME_PROFILE_FAST = 1,   // 0.2s (Fast profile)
+    TIME_PROFILE_MEDIUM = 2, // 1.0s (Medium profile)
+    TIME_PROFILE_SLOW = 3    // 3.0s (Slow profile)
+} TimeProfile;
+
 // Helper to create an engine instance by EngineType
 Engine engine_create(EngineType type);
 void engine_destroy(Engine *engine);
 void engine_config_init_default(EngineConfig *cfg);
+void engine_config_set_time_profile(EngineConfig *cfg, TimeProfile profile);
+TimeProfile engine_config_get_time_profile(const EngineConfig *cfg);
 void engine_apply_config(Engine *engine, EngineType type, const EngineConfig *cfg);
 
 // Engine & Wine availability checks

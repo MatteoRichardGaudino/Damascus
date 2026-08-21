@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stdbool.h>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -11,8 +12,22 @@
 #include "engine.h"
 #include "interaction.h"
 #include "ui.h"
+#include "cli.h"
 
-int main(void) {
+int main(int argc, char **argv) {
+    if (argc > 1) {
+        bool force_gui = false;
+        for (int i = 1; i < argc; i++) {
+            if (strcmp(argv[i], "--gui") == 0) {
+                force_gui = true;
+                break;
+            }
+        }
+        if (!force_gui) {
+            return cli_run(argc, argv);
+        }
+    }
+
     Window win;
     if (!window_init(&win, "Damascus - Dama Italiana 3D", 1024, 768)) {
         return -1;

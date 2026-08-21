@@ -267,15 +267,16 @@ static void ui_end_and_draw(GLuint ui_shader, int win_w, int win_h) {
     glEnable(GL_DEPTH_TEST);
 }
 
-static const double s_mcts_time_budgets[] = { 0.25, 0.50, 1.00, 2.00, 3.00, 5.00, 10.00 };
+static const double s_mcts_time_budgets[] = { 0.20, 0.50, 1.00, 2.00, 3.00, 5.00, 10.00 };
 static const float  s_mcts_alphas[]       = { 0.50f, 0.80f, 1.00f, 1.4142f, 1.80f, 2.20f, 2.80f };
 static const int    s_mcts_depths[]       = { 20, 35, 50, 70, 100, 150, 200 };
+static const float  s_mcts_epsilons[]     = { 0.05f, 0.10f, 0.15f, 0.20f, 0.30f, 0.40f, 1.00f };
 static const double s_puct_time_budgets[] = { 0.20, 0.50, 1.00, 2.00, 3.00, 5.00, 10.00 };
 static const float  s_puct_c_pucts[]      = { 0.50f, 0.80f, 1.00f, 1.50f, 2.00f, 2.50f, 3.50f };
 static const float  s_puct_temperatures[] = { 0.20f, 0.50f, 0.80f, 1.00f, 1.20f, 1.50f, 2.00f };
 static const int    s_puct_depths[]       = { 20, 35, 50, 70, 100, 150, 200 };
-static const double s_cb_times[]          = { 0.10, 0.25, 0.50, 1.00, 2.00, 5.00, 10.00 };
-static const double s_kr_times[]          = { 0.50, 1.00, 2.00, 5.00, 10.00 };
+static const double s_cb_times[]          = { 0.20, 0.50, 1.00, 2.00, 3.00, 5.00, 10.00 };
+static const double s_kr_times[]          = { 0.20, 0.50, 1.00, 2.00, 3.00, 5.00, 10.00 };
 
 static void step_double_val(double *val, const double *arr, int count, int delta) {
     int cur_idx = 0;
@@ -365,7 +366,7 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
         
         // 2. Main Menu Card (Center of screen)
         float p_w = 560.0f;
-        float p_h = 475.0f;
+        float p_h = 515.0f;
         float p_x = ((float)ui->win_w - p_w) * 0.5f;
         float p_y = ((float)ui->win_h - p_h) * 0.5f;
         
@@ -374,17 +375,17 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
         ui_add_quad(p_x, p_y, p_w, p_h, glass_panel);
         
         // Title Header
-        ui_add_text_centered("DAMASCUS", p_x + p_w * 0.5f, p_y + 36.0f, 2.5f, text_gold);
-        ui_add_text_centered("DAMA ITALIANA 3D", p_x + p_w * 0.5f, p_y + 65.0f, 1.3f, text_sub);
+        ui_add_text_centered("DAMASCUS", p_x + p_w * 0.5f, p_y + 32.0f, 2.5f, text_gold);
+        ui_add_text_centered("DAMA ITALIANA 3D", p_x + p_w * 0.5f, p_y + 58.0f, 1.3f, text_sub);
         
         // Mode Selection Header
-        ui_add_text("SELEZIONA MODALITA DI GIOCO:", p_x + 35.0f, p_y + 98.0f, 1.1f, text_white);
+        ui_add_text("SELEZIONA MODALITA DI GIOCO:", p_x + 35.0f, p_y + 88.0f, 1.05f, text_white);
         
         // Mode Selection Buttons
         float btn_w = 150.0f;
-        float btn_h = 42.0f;
+        float btn_h = 38.0f;
         float start_x = p_x + 35.0f;
-        float btn_y = p_y + 120.0f;
+        float btn_y = p_y + 108.0f;
         
         // 2 Player Button
         vec4 *c1 = (ui->selected_mode == MODE_2PLAYER) ? &btn_active : &btn_normal;
@@ -402,51 +403,73 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
         ui_add_text_centered("CPU VS CPU", start_x + 330.0f + btn_w * 0.5f, btn_y + btn_h * 0.5f, 1.0f, text_white);
         
         // Engine / Color Selection Boxes
-        float eng_y = p_y + 178.0f;
+        float eng_y = p_y + 158.0f;
         if (ui->selected_mode == MODE_1PLAYER) {
-            ui_add_text("SELEZIONA IL TUO COLORE:", start_x, eng_y, 1.1f, text_white);
+            ui_add_text("SELEZIONA IL TUO COLORE:", start_x, eng_y, 1.05f, text_white);
             
             float col_btn_w = 235.0f;
             vec4 *col_w = (ui->selected_human_color == PLAYER_WHITE) ? &btn_active : &btn_normal;
             vec4 *col_b = (ui->selected_human_color == PLAYER_BLACK) ? &btn_active : &btn_normal;
             
-            ui_add_quad(start_x, eng_y + 20.0f, col_btn_w, 38.0f, *col_w);
-            ui_add_text_centered("GIOCA COME BIANCO", start_x + col_btn_w * 0.5f, eng_y + 39.0f, 1.0f, text_white);
+            ui_add_quad(start_x, eng_y + 18.0f, col_btn_w, 34.0f, *col_w);
+            ui_add_text_centered("GIOCA COME BIANCO", start_x + col_btn_w * 0.5f, eng_y + 35.0f, 1.0f, text_white);
             
-            ui_add_quad(start_x + 245.0f, eng_y + 20.0f, col_btn_w, 38.0f, *col_b);
-            ui_add_text_centered("GIOCA COME NERO", start_x + 245.0f + col_btn_w * 0.5f, eng_y + 39.0f, 1.0f, text_white);
+            ui_add_quad(start_x + 245.0f, eng_y + 18.0f, col_btn_w, 34.0f, *col_b);
+            ui_add_text_centered("GIOCA COME NERO", start_x + 245.0f + col_btn_w * 0.5f, eng_y + 35.0f, 1.0f, text_white);
             
             char cpu_str[128];
             snprintf(cpu_str, sizeof(cpu_str), "ENGINE CPU: %s", engine_get_type_name(ui->selected_black_engine));
-            ui_add_quad(start_x, eng_y + 68.0f, 480.0f, 35.0f, btn_normal);
-            ui_add_text_centered(cpu_str, start_x + 240.0f, eng_y + 85.0f, 1.1f, text_gold);
+            ui_add_quad(start_x, eng_y + 58.0f, 480.0f, 34.0f, btn_normal);
+            ui_add_text_centered(cpu_str, start_x + 240.0f, eng_y + 75.0f, 1.05f, text_gold);
         } else if (ui->selected_mode == MODE_CPUVSCPU) {
-            ui_add_text("SELEZIONA ENGINE CPU:", start_x, eng_y, 1.1f, text_white);
+            ui_add_text("SELEZIONA ENGINE CPU:", start_x, eng_y, 1.05f, text_white);
             
             char e1_str[64], e2_str[64];
             snprintf(e1_str, sizeof(e1_str), "CPU 1: %s", engine_get_type_name(ui->selected_white_engine));
             snprintf(e2_str, sizeof(e2_str), "CPU 2: %s", engine_get_type_name(ui->selected_black_engine));
             
-            ui_add_quad(start_x, eng_y + 20.0f, 235.0f, 38.0f, btn_normal);
-            ui_add_text_centered(e1_str, start_x + 117.0f, eng_y + 39.0f, 1.0f, text_gold);
+            ui_add_quad(start_x, eng_y + 18.0f, 235.0f, 34.0f, btn_normal);
+            ui_add_text_centered(e1_str, start_x + 117.0f, eng_y + 35.0f, 1.0f, text_gold);
             
-            ui_add_quad(start_x + 245.0f, eng_y + 20.0f, 235.0f, 38.0f, btn_normal);
-            ui_add_text_centered(e2_str, start_x + 245.0f + 117.0f, eng_y + 39.0f, 1.0f, text_gold);
+            ui_add_quad(start_x + 245.0f, eng_y + 18.0f, 235.0f, 34.0f, btn_normal);
+            ui_add_text_centered(e2_str, start_x + 245.0f + 117.0f, eng_y + 35.0f, 1.0f, text_gold);
         }
+
+        // Thinking Time Profiles (Fast 0.2s | Medium 1.0s | Slow 3.0s)
+        float prof_y = p_y + 260.0f;
+        ui_add_text("PROFILO TEMPO DI RIFLESSIONE (THINKING TIME):", start_x, prof_y, 1.05f, text_white);
+
+        TimeProfile cur_prof = engine_config_get_time_profile(&ui->engine_config);
+        vec4 *p_fast   = (cur_prof == TIME_PROFILE_FAST)   ? &btn_active : &btn_normal;
+        vec4 *p_medium = (cur_prof == TIME_PROFILE_MEDIUM) ? &btn_active : &btn_normal;
+        vec4 *p_slow   = (cur_prof == TIME_PROFILE_SLOW)   ? &btn_active : &btn_normal;
+
+        float prof_btn_y = prof_y + 20.0f;
+        float prof_btn_w = 150.0f;
+        float prof_btn_h = 35.0f;
+
+        ui_add_quad(start_x, prof_btn_y, prof_btn_w, prof_btn_h, *p_fast);
+        ui_add_text_centered("FAST (0.2s)", start_x + prof_btn_w * 0.5f, prof_btn_y + prof_btn_h * 0.5f, 1.0f, text_white);
+
+        ui_add_quad(start_x + 165.0f, prof_btn_y, prof_btn_w, prof_btn_h, *p_medium);
+        ui_add_text_centered("MEDIUM (1.0s)", start_x + 165.0f + prof_btn_w * 0.5f, prof_btn_y + prof_btn_h * 0.5f, 1.0f, text_white);
+
+        ui_add_quad(start_x + 330.0f, prof_btn_y, prof_btn_w, prof_btn_h, *p_slow);
+        ui_add_text_centered("SLOW (3.0s)", start_x + 330.0f + prof_btn_w * 0.5f, prof_btn_y + prof_btn_h * 0.5f, 1.0f, text_white);
         
         // Engine detailed settings button
-        float cfg_btn_y = p_y + 325.0f;
+        float cfg_btn_y = p_y + 332.0f;
         float cfg_btn_w = 480.0f;
-        ui_add_quad(start_x, cfg_btn_y, cfg_btn_w, 40.0f, btn_stepper);
-        ui_add_text_centered("IMPOSTAZIONI DETTAGLIATE MOTORI", start_x + cfg_btn_w * 0.5f, cfg_btn_y + 20.0f, 1.1f, text_gold);
+        ui_add_quad(start_x, cfg_btn_y, cfg_btn_w, 36.0f, btn_stepper);
+        ui_add_text_centered("IMPOSTAZIONI DETTAGLIATE MOTORI", start_x + cfg_btn_w * 0.5f, cfg_btn_y + 18.0f, 1.05f, text_gold);
         
         // Start Game Button
         float start_btn_y = p_y + 385.0f;
         float start_btn_w = 340.0f;
         float start_btn_x = p_x + (p_w - start_btn_w) * 0.5f;
         
-        ui_add_quad(start_btn_x, start_btn_y, start_btn_w, 55.0f, btn_start);
-        ui_add_text_centered("INIZIA PARTITA", start_btn_x + start_btn_w * 0.5f, start_btn_y + 27.0f, 1.8f, text_white);
+        ui_add_quad(start_btn_x, start_btn_y, start_btn_w, 52.0f, btn_start);
+        ui_add_text_centered("INIZIA PARTITA", start_btn_x + start_btn_w * 0.5f, start_btn_y + 26.0f, 1.7f, text_white);
         
     } else if (ui->state == UI_STATE_ENGINE_SETTINGS) {
         // Fullscreen Dimmed Backdrop
@@ -494,68 +517,86 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             float step_x = s_x + 450.0f;
             
             // Parameter 1: Time budget
-            float r1_y = s_y + 105.0f;
-            ui_add_text("TEMPO DI RICERCA (TIME BUDGET):", row_x, r1_y + 10.0f, 1.1f, text_white);
-            ui_add_quad(step_x, r1_y, 40.0f, 35.0f, btn_stepper);
-            ui_add_text_centered("-", step_x + 20.0f, r1_y + 17.0f, 1.5f, text_white);
+            float r1_y = s_y + 95.0f;
+            ui_add_text("TEMPO DI RICERCA (TIME BUDGET):", row_x, r1_y + 10.0f, 1.05f, text_white);
+            ui_add_quad(step_x, r1_y, 40.0f, 32.0f, btn_stepper);
+            ui_add_text_centered("-", step_x + 20.0f, r1_y + 15.0f, 1.5f, text_white);
             
             char val1[32];
             snprintf(val1, sizeof(val1), "%.2fs", ui->engine_config.mcts_time_budget);
-            ui_add_quad(step_x + 45.0f, r1_y, 95.0f, 35.0f, btn_normal);
-            ui_add_text_centered(val1, step_x + 92.0f, r1_y + 17.0f, 1.1f, text_gold);
+            ui_add_quad(step_x + 45.0f, r1_y, 95.0f, 32.0f, btn_normal);
+            ui_add_text_centered(val1, step_x + 92.0f, r1_y + 15.0f, 1.05f, text_gold);
             
-            ui_add_quad(step_x + 145.0f, r1_y, 40.0f, 35.0f, btn_stepper);
-            ui_add_text_centered("+", step_x + 165.0f, r1_y + 17.0f, 1.5f, text_white);
+            ui_add_quad(step_x + 145.0f, r1_y, 40.0f, 32.0f, btn_stepper);
+            ui_add_text_centered("+", step_x + 165.0f, r1_y + 15.0f, 1.5f, text_white);
             
             // Parameter 2: Exploration alpha
-            float r2_y = s_y + 150.0f;
-            ui_add_text("PARAMETRO ESPLORAZIONE (ALPHA):", row_x, r2_y + 10.0f, 1.1f, text_white);
-            ui_add_quad(step_x, r2_y, 40.0f, 35.0f, btn_stepper);
-            ui_add_text_centered("-", step_x + 20.0f, r2_y + 17.0f, 1.5f, text_white);
+            float r2_y = s_y + 132.0f;
+            ui_add_text("PARAMETRO ESPLORAZIONE (ALPHA):", row_x, r2_y + 10.0f, 1.05f, text_white);
+            ui_add_quad(step_x, r2_y, 40.0f, 32.0f, btn_stepper);
+            ui_add_text_centered("-", step_x + 20.0f, r2_y + 15.0f, 1.5f, text_white);
             
             char val2[32];
             snprintf(val2, sizeof(val2), "%.2f", ui->engine_config.mcts_exploration);
-            ui_add_quad(step_x + 45.0f, r2_y, 95.0f, 35.0f, btn_normal);
-            ui_add_text_centered(val2, step_x + 92.0f, r2_y + 17.0f, 1.1f, text_gold);
+            ui_add_quad(step_x + 45.0f, r2_y, 95.0f, 32.0f, btn_normal);
+            ui_add_text_centered(val2, step_x + 92.0f, r2_y + 15.0f, 1.05f, text_gold);
             
-            ui_add_quad(step_x + 145.0f, r2_y, 40.0f, 35.0f, btn_stepper);
-            ui_add_text_centered("+", step_x + 165.0f, r2_y + 17.0f, 1.5f, text_white);
+            ui_add_quad(step_x + 145.0f, r2_y, 40.0f, 32.0f, btn_stepper);
+            ui_add_text_centered("+", step_x + 165.0f, r2_y + 15.0f, 1.5f, text_white);
             
             // Parameter 3: Max rollout depth
-            float r3_y = s_y + 195.0f;
-            ui_add_text("MAX PROFONDITA ROLLOUT:", row_x, r3_y + 10.0f, 1.1f, text_white);
-            ui_add_quad(step_x, r3_y, 40.0f, 35.0f, btn_stepper);
-            ui_add_text_centered("-", step_x + 20.0f, r3_y + 17.0f, 1.5f, text_white);
+            float r3_y = s_y + 169.0f;
+            ui_add_text("MAX PROFONDITA ROLLOUT:", row_x, r3_y + 10.0f, 1.05f, text_white);
+            ui_add_quad(step_x, r3_y, 40.0f, 32.0f, btn_stepper);
+            ui_add_text_centered("-", step_x + 20.0f, r3_y + 15.0f, 1.5f, text_white);
             
             char val3[32];
             snprintf(val3, sizeof(val3), "%d", ui->engine_config.mcts_max_rollout_depth);
-            ui_add_quad(step_x + 45.0f, r3_y, 95.0f, 35.0f, btn_normal);
-            ui_add_text_centered(val3, step_x + 92.0f, r3_y + 17.0f, 1.1f, text_gold);
+            ui_add_quad(step_x + 45.0f, r3_y, 95.0f, 32.0f, btn_normal);
+            ui_add_text_centered(val3, step_x + 92.0f, r3_y + 15.0f, 1.05f, text_gold);
             
-            ui_add_quad(step_x + 145.0f, r3_y, 40.0f, 35.0f, btn_stepper);
-            ui_add_text_centered("+", step_x + 165.0f, r3_y + 17.0f, 1.5f, text_white);
+            ui_add_quad(step_x + 145.0f, r3_y, 40.0f, 32.0f, btn_stepper);
+            ui_add_text_centered("+", step_x + 165.0f, r3_y + 15.0f, 1.5f, text_white);
+
+            // Parameter 4: Rollout Epsilon (Biased rollout exploration rate)
+            float r4_y = s_y + 206.0f;
+            ui_add_text("EPSILON ROLLOUT (BIAS EURISTICO):", row_x, r4_y + 10.0f, 1.05f, text_white);
+            ui_add_quad(step_x, r4_y, 40.0f, 32.0f, btn_stepper);
+            ui_add_text_centered("-", step_x + 20.0f, r4_y + 15.0f, 1.5f, text_white);
             
-            // Parameter 4: Endgame database toggle
-            float r4_y = s_y + 240.0f;
-            ui_add_text("DATABASE FINALI (WLD TABLEBASE):", row_x, r4_y + 10.0f, 1.1f, text_white);
+            char val_eps[32];
+            if (ui->engine_config.mcts_rollout_epsilon >= 0.99f) {
+                snprintf(val_eps, sizeof(val_eps), "1.0(RAND)");
+            } else {
+                snprintf(val_eps, sizeof(val_eps), "%.2f (%.0f%%)", ui->engine_config.mcts_rollout_epsilon, ui->engine_config.mcts_rollout_epsilon * 100.0f);
+            }
+            ui_add_quad(step_x + 45.0f, r4_y, 95.0f, 32.0f, btn_normal);
+            ui_add_text_centered(val_eps, step_x + 92.0f, r4_y + 15.0f, 0.95f, text_gold);
+            
+            ui_add_quad(step_x + 145.0f, r4_y, 40.0f, 32.0f, btn_stepper);
+            ui_add_text_centered("+", step_x + 165.0f, r4_y + 15.0f, 1.5f, text_white);
+            
+            // Parameter 5: Endgame database toggle
+            float r5_y = s_y + 243.0f;
+            ui_add_text("DATABASE FINALI (WLD TABLEBASE):", row_x, r5_y + 10.0f, 1.05f, text_white);
             
             vec4 *db_btn_c = ui->engine_config.mcts_use_db ? &btn_start : &btn_danger;
             const char *db_str = ui->engine_config.mcts_use_db ? "ATTIVO (ON)" : "DISATTIVO (OFF)";
-            ui_add_quad(step_x, r4_y, 185.0f, 35.0f, *db_btn_c);
-            ui_add_text_centered(db_str, step_x + 92.0f, r4_y + 17.0f, 1.0f, text_white);
+            ui_add_quad(step_x, r5_y, 185.0f, 32.0f, *db_btn_c);
+            ui_add_text_centered(db_str, step_x + 92.0f, r5_y + 15.0f, 1.0f, text_white);
             
-            // Parameter 5: Debug logging toggle
-            float r5_y = s_y + 285.0f;
-            ui_add_text("LOG DEBUG MOTORE (CONSOLE):", row_x, r5_y + 10.0f, 1.1f, text_white);
+            // Parameter 6: Debug logging toggle
+            float r6_y = s_y + 280.0f;
+            ui_add_text("LOG DEBUG MOTORE (CONSOLE):", row_x, r6_y + 10.0f, 1.05f, text_white);
             
             vec4 *log_btn_c = ui->engine_config.mcts_debug_log ? &btn_start : &btn_danger;
             const char *log_str = ui->engine_config.mcts_debug_log ? "ATTIVO (ON)" : "DISATTIVO (OFF)";
-            ui_add_quad(step_x, r5_y, 185.0f, 35.0f, *log_btn_c);
-            ui_add_text_centered(log_str, step_x + 92.0f, r5_y + 17.0f, 1.0f, text_white);
+            ui_add_quad(step_x, r6_y, 185.0f, 32.0f, *log_btn_c);
+            ui_add_text_centered(log_str, step_x + 92.0f, r6_y + 15.0f, 1.0f, text_white);
             
             // Info text
-            ui_add_text("MCTS combina ricerca Monte Carlo UCB1 e tabella di finale WLD esatta.", row_x, s_y + 345.0f, 0.95f, text_sub);
-            ui_add_text("I log stampano numero mosse, visite, WinRate e punteggio Q per mossa.", row_x, s_y + 370.0f, 0.95f, text_sub);
+            ui_add_text("MCTS UCB1 combina esplorazione/sfruttamento e rollout euristici tattici.", row_x, s_y + 345.0f, 0.95f, text_sub);
+            ui_add_text("L'epsilon rollout guida le simulazioni con l'euristica delle prese FID.", row_x, s_y + 370.0f, 0.95f, text_sub);
 
         } else if (ui->settings_tab == 1) {
             // Tab 1: MCTS PUCT
@@ -563,78 +604,96 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             float step_x = s_x + 450.0f;
             
             // Parameter 1: Time budget
-            float r1_y = s_y + 100.0f;
-            ui_add_text("TEMPO DI RICERCA (TIME BUDGET):", row_x, r1_y + 10.0f, 1.05f, text_white);
-            ui_add_quad(step_x, r1_y, 40.0f, 32.0f, btn_stepper);
-            ui_add_text_centered("-", step_x + 20.0f, r1_y + 15.0f, 1.5f, text_white);
+            float r1_y = s_y + 92.0f;
+            ui_add_text("TEMPO DI RICERCA (TIME BUDGET):", row_x, r1_y + 9.0f, 1.05f, text_white);
+            ui_add_quad(step_x, r1_y, 40.0f, 30.0f, btn_stepper);
+            ui_add_text_centered("-", step_x + 20.0f, r1_y + 14.0f, 1.5f, text_white);
             
             char val1[32];
             snprintf(val1, sizeof(val1), "%.2fs", ui->engine_config.puct_time_budget);
-            ui_add_quad(step_x + 45.0f, r1_y, 95.0f, 32.0f, btn_normal);
-            ui_add_text_centered(val1, step_x + 92.0f, r1_y + 15.0f, 1.05f, text_gold);
+            ui_add_quad(step_x + 45.0f, r1_y, 95.0f, 30.0f, btn_normal);
+            ui_add_text_centered(val1, step_x + 92.0f, r1_y + 14.0f, 1.05f, text_gold);
             
-            ui_add_quad(step_x + 145.0f, r1_y, 40.0f, 32.0f, btn_stepper);
-            ui_add_text_centered("+", step_x + 165.0f, r1_y + 15.0f, 1.5f, text_white);
+            ui_add_quad(step_x + 145.0f, r1_y, 40.0f, 30.0f, btn_stepper);
+            ui_add_text_centered("+", step_x + 165.0f, r1_y + 14.0f, 1.5f, text_white);
             
             // Parameter 2: Exploration c_puct
-            float r2_y = s_y + 138.0f;
-            ui_add_text("COSTANTE ESPLORAZIONE (c_puct):", row_x, r2_y + 10.0f, 1.05f, text_white);
-            ui_add_quad(step_x, r2_y, 40.0f, 32.0f, btn_stepper);
-            ui_add_text_centered("-", step_x + 20.0f, r2_y + 15.0f, 1.5f, text_white);
+            float r2_y = s_y + 125.0f;
+            ui_add_text("COSTANTE ESPLORAZIONE (c_puct):", row_x, r2_y + 9.0f, 1.05f, text_white);
+            ui_add_quad(step_x, r2_y, 40.0f, 30.0f, btn_stepper);
+            ui_add_text_centered("-", step_x + 20.0f, r2_y + 14.0f, 1.5f, text_white);
             
             char val2[32];
             snprintf(val2, sizeof(val2), "%.2f", ui->engine_config.puct_c_puct);
-            ui_add_quad(step_x + 45.0f, r2_y, 95.0f, 32.0f, btn_normal);
-            ui_add_text_centered(val2, step_x + 92.0f, r2_y + 15.0f, 1.05f, text_gold);
+            ui_add_quad(step_x + 45.0f, r2_y, 95.0f, 30.0f, btn_normal);
+            ui_add_text_centered(val2, step_x + 92.0f, r2_y + 14.0f, 1.05f, text_gold);
             
-            ui_add_quad(step_x + 145.0f, r2_y, 40.0f, 32.0f, btn_stepper);
-            ui_add_text_centered("+", step_x + 165.0f, r2_y + 15.0f, 1.5f, text_white);
+            ui_add_quad(step_x + 145.0f, r2_y, 40.0f, 30.0f, btn_stepper);
+            ui_add_text_centered("+", step_x + 165.0f, r2_y + 14.0f, 1.5f, text_white);
 
             // Parameter 3: Temperature (tau)
-            float r3_y = s_y + 176.0f;
-            ui_add_text("TEMPERATURA PRIOR (TAU):", row_x, r3_y + 10.0f, 1.05f, text_white);
-            ui_add_quad(step_x, r3_y, 40.0f, 32.0f, btn_stepper);
-            ui_add_text_centered("-", step_x + 20.0f, r3_y + 15.0f, 1.5f, text_white);
+            float r3_y = s_y + 158.0f;
+            ui_add_text("TEMPERATURA PRIOR (TAU):", row_x, r3_y + 9.0f, 1.05f, text_white);
+            ui_add_quad(step_x, r3_y, 40.0f, 30.0f, btn_stepper);
+            ui_add_text_centered("-", step_x + 20.0f, r3_y + 14.0f, 1.5f, text_white);
             
             char val_tau[32];
             snprintf(val_tau, sizeof(val_tau), "%.2f", ui->engine_config.puct_temperature);
-            ui_add_quad(step_x + 45.0f, r3_y, 95.0f, 32.0f, btn_normal);
-            ui_add_text_centered(val_tau, step_x + 92.0f, r3_y + 15.0f, 1.05f, text_gold);
+            ui_add_quad(step_x + 45.0f, r3_y, 95.0f, 30.0f, btn_normal);
+            ui_add_text_centered(val_tau, step_x + 92.0f, r3_y + 14.0f, 1.05f, text_gold);
             
-            ui_add_quad(step_x + 145.0f, r3_y, 40.0f, 32.0f, btn_stepper);
-            ui_add_text_centered("+", step_x + 165.0f, r3_y + 15.0f, 1.5f, text_white);
+            ui_add_quad(step_x + 145.0f, r3_y, 40.0f, 30.0f, btn_stepper);
+            ui_add_text_centered("+", step_x + 165.0f, r3_y + 14.0f, 1.5f, text_white);
             
             // Parameter 4: Max rollout depth
-            float r4_y = s_y + 214.0f;
-            ui_add_text("MAX PROFONDITA ROLLOUT:", row_x, r4_y + 10.0f, 1.05f, text_white);
-            ui_add_quad(step_x, r4_y, 40.0f, 32.0f, btn_stepper);
-            ui_add_text_centered("-", step_x + 20.0f, r4_y + 15.0f, 1.5f, text_white);
+            float r4_y = s_y + 191.0f;
+            ui_add_text("MAX PROFONDITA ROLLOUT:", row_x, r4_y + 9.0f, 1.05f, text_white);
+            ui_add_quad(step_x, r4_y, 40.0f, 30.0f, btn_stepper);
+            ui_add_text_centered("-", step_x + 20.0f, r4_y + 14.0f, 1.5f, text_white);
             
             char val3[32];
             snprintf(val3, sizeof(val3), "%d", ui->engine_config.puct_max_rollout_depth);
-            ui_add_quad(step_x + 45.0f, r4_y, 95.0f, 32.0f, btn_normal);
-            ui_add_text_centered(val3, step_x + 92.0f, r4_y + 15.0f, 1.05f, text_gold);
+            ui_add_quad(step_x + 45.0f, r4_y, 95.0f, 30.0f, btn_normal);
+            ui_add_text_centered(val3, step_x + 92.0f, r4_y + 14.0f, 1.05f, text_gold);
             
-            ui_add_quad(step_x + 145.0f, r4_y, 40.0f, 32.0f, btn_stepper);
-            ui_add_text_centered("+", step_x + 165.0f, r4_y + 15.0f, 1.5f, text_white);
+            ui_add_quad(step_x + 145.0f, r4_y, 40.0f, 30.0f, btn_stepper);
+            ui_add_text_centered("+", step_x + 165.0f, r4_y + 14.0f, 1.5f, text_white);
+
+            // Parameter 5: Rollout Epsilon (Biased rollout exploration rate)
+            float r5_y = s_y + 224.0f;
+            ui_add_text("EPSILON ROLLOUT (BIAS EURISTICO):", row_x, r5_y + 9.0f, 1.05f, text_white);
+            ui_add_quad(step_x, r5_y, 40.0f, 30.0f, btn_stepper);
+            ui_add_text_centered("-", step_x + 20.0f, r5_y + 14.0f, 1.5f, text_white);
             
-            // Parameter 5: Endgame database toggle
-            float r5_y = s_y + 252.0f;
-            ui_add_text("DATABASE FINALI (WLD TABLEBASE):", row_x, r5_y + 10.0f, 1.05f, text_white);
+            char val_puct_eps[32];
+            if (ui->engine_config.puct_rollout_epsilon >= 0.99f) {
+                snprintf(val_puct_eps, sizeof(val_puct_eps), "1.0(RAND)");
+            } else {
+                snprintf(val_puct_eps, sizeof(val_puct_eps), "%.2f (%.0f%%)", ui->engine_config.puct_rollout_epsilon, ui->engine_config.puct_rollout_epsilon * 100.0f);
+            }
+            ui_add_quad(step_x + 45.0f, r5_y, 95.0f, 30.0f, btn_normal);
+            ui_add_text_centered(val_puct_eps, step_x + 92.0f, r5_y + 14.0f, 0.95f, text_gold);
+            
+            ui_add_quad(step_x + 145.0f, r5_y, 40.0f, 30.0f, btn_stepper);
+            ui_add_text_centered("+", step_x + 165.0f, r5_y + 14.0f, 1.5f, text_white);
+            
+            // Parameter 6: Endgame database toggle
+            float r6_y = s_y + 257.0f;
+            ui_add_text("DATABASE FINALI (WLD TABLEBASE):", row_x, r6_y + 9.0f, 1.05f, text_white);
             
             vec4 *db_btn_c = ui->engine_config.puct_use_db ? &btn_start : &btn_danger;
             const char *db_str = ui->engine_config.puct_use_db ? "ATTIVO (ON)" : "DISATTIVO (OFF)";
-            ui_add_quad(step_x, r5_y, 185.0f, 32.0f, *db_btn_c);
-            ui_add_text_centered(db_str, step_x + 92.0f, r5_y + 15.0f, 1.0f, text_white);
+            ui_add_quad(step_x, r6_y, 185.0f, 30.0f, *db_btn_c);
+            ui_add_text_centered(db_str, step_x + 92.0f, r6_y + 14.0f, 1.0f, text_white);
             
-            // Parameter 6: Debug logging toggle
-            float r6_y = s_y + 290.0f;
-            ui_add_text("LOG DEBUG MOTORE (CONSOLE):", row_x, r6_y + 10.0f, 1.05f, text_white);
+            // Parameter 7: Debug logging toggle
+            float r7_y = s_y + 290.0f;
+            ui_add_text("LOG DEBUG MOTORE (CONSOLE):", row_x, r7_y + 9.0f, 1.05f, text_white);
             
             vec4 *log_btn_c = ui->engine_config.puct_debug_log ? &btn_start : &btn_danger;
             const char *log_str = ui->engine_config.puct_debug_log ? "ATTIVO (ON)" : "DISATTIVO (OFF)";
-            ui_add_quad(step_x, r6_y, 185.0f, 32.0f, *log_btn_c);
-            ui_add_text_centered(log_str, step_x + 92.0f, r6_y + 15.0f, 1.0f, text_white);
+            ui_add_quad(step_x, r7_y, 185.0f, 30.0f, *log_btn_c);
+            ui_add_text_centered(log_str, step_x + 92.0f, r7_y + 14.0f, 1.0f, text_white);
             
             // Info text
             ui_add_text("MCTS PUCT integra prior da euristica veloce FID e ricerca AlphaGo-style.", row_x, s_y + 345.0f, 0.95f, text_sub);
@@ -829,14 +888,14 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
 bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mouse_y) {
     if (ui->state == UI_STATE_MAIN_MENU) {
         float p_w = 560.0f;
-        float p_h = 475.0f;
+        float p_h = 515.0f;
         float p_x = ((float)ui->win_w - p_w) * 0.5f;
         float p_y = ((float)ui->win_h - p_h) * 0.5f;
         
         float btn_w = 150.0f;
-        float btn_h = 42.0f;
+        float btn_h = 38.0f;
         float start_x = p_x + 35.0f;
-        float btn_y = p_y + 120.0f;
+        float btn_y = p_y + 108.0f;
         
         // Mode 2Player
         if (point_in_rect(mouse_x, mouse_y, start_x, btn_y, btn_w, btn_h)) {
@@ -856,47 +915,64 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
         
         // Color selection for 1Player mode
         if (ui->selected_mode == MODE_1PLAYER) {
-            float eng_y = p_y + 178.0f;
+            float eng_y = p_y + 158.0f;
             float col_btn_w = 235.0f;
             
             // White button
-            if (point_in_rect(mouse_x, mouse_y, start_x, eng_y + 20.0f, col_btn_w, 38.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, start_x, eng_y + 18.0f, col_btn_w, 34.0f)) {
                 ui->selected_human_color = PLAYER_WHITE;
                 return true;
             }
             // Black button
-            if (point_in_rect(mouse_x, mouse_y, start_x + 245.0f, eng_y + 20.0f, col_btn_w, 38.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, start_x + 245.0f, eng_y + 18.0f, col_btn_w, 34.0f)) {
                 ui->selected_human_color = PLAYER_BLACK;
                 return true;
             }
 
             // CPU Engine Selection button in 1Player mode
-            if (point_in_rect(mouse_x, mouse_y, start_x, eng_y + 68.0f, 480.0f, 35.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, start_x, eng_y + 58.0f, 480.0f, 34.0f)) {
                 do {
                     ui->selected_black_engine = (ui->selected_black_engine + 1) % ENGINE_TYPE_COUNT;
                 } while (!engine_is_type_available(ui->selected_black_engine));
                 return true;
             }
         } else if (ui->selected_mode == MODE_CPUVSCPU) {
-            float eng_y = p_y + 178.0f;
-            if (point_in_rect(mouse_x, mouse_y, start_x, eng_y + 20.0f, 235.0f, 38.0f)) {
+            float eng_y = p_y + 158.0f;
+            if (point_in_rect(mouse_x, mouse_y, start_x, eng_y + 18.0f, 235.0f, 34.0f)) {
                 do {
                     ui->selected_white_engine = (ui->selected_white_engine + 1) % ENGINE_TYPE_COUNT;
                 } while (!engine_is_type_available(ui->selected_white_engine));
                 return true;
             }
-            if (point_in_rect(mouse_x, mouse_y, start_x + 245.0f, eng_y + 20.0f, 235.0f, 38.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, start_x + 245.0f, eng_y + 18.0f, 235.0f, 34.0f)) {
                 do {
                     ui->selected_black_engine = (ui->selected_black_engine + 1) % ENGINE_TYPE_COUNT;
                 } while (!engine_is_type_available(ui->selected_black_engine));
                 return true;
             }
         }
+
+        // Thinking Time Profiles Selection (Fast 0.2s | Medium 1.0s | Slow 3.0s)
+        float prof_btn_y = p_y + 280.0f;
+        float prof_btn_w = 150.0f;
+        float prof_btn_h = 35.0f;
+        if (point_in_rect(mouse_x, mouse_y, start_x, prof_btn_y, prof_btn_w, prof_btn_h)) {
+            engine_config_set_time_profile(&ui->engine_config, TIME_PROFILE_FAST);
+            return true;
+        }
+        if (point_in_rect(mouse_x, mouse_y, start_x + 165.0f, prof_btn_y, prof_btn_w, prof_btn_h)) {
+            engine_config_set_time_profile(&ui->engine_config, TIME_PROFILE_MEDIUM);
+            return true;
+        }
+        if (point_in_rect(mouse_x, mouse_y, start_x + 330.0f, prof_btn_y, prof_btn_w, prof_btn_h)) {
+            engine_config_set_time_profile(&ui->engine_config, TIME_PROFILE_SLOW);
+            return true;
+        }
         
         // Open Engine Settings Button
-        float cfg_btn_y = p_y + 325.0f;
+        float cfg_btn_y = p_y + 332.0f;
         float cfg_btn_w = 480.0f;
-        if (point_in_rect(mouse_x, mouse_y, start_x, cfg_btn_y, cfg_btn_w, 40.0f)) {
+        if (point_in_rect(mouse_x, mouse_y, start_x, cfg_btn_y, cfg_btn_w, 36.0f)) {
             ui->prev_ui_state = ui->state;
             ui->state = UI_STATE_ENGINE_SETTINGS;
             return true;
@@ -907,7 +983,7 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
         float start_btn_w = 340.0f;
         float start_btn_x = p_x + (p_w - start_btn_w) * 0.5f;
         
-        if (point_in_rect(mouse_x, mouse_y, start_btn_x, start_btn_y, start_btn_w, 55.0f)) {
+        if (point_in_rect(mouse_x, mouse_y, start_btn_x, start_btn_y, start_btn_w, 52.0f)) {
             ui->state = UI_STATE_PLAYING;
             ui->has_white_ai_time = false;
             ui->has_black_ai_time = false;
@@ -948,111 +1024,133 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
         float step_x = s_x + 450.0f;
         if (ui->settings_tab == 0) {
             // MCTS UCB1 Controls
-            float r1_y = s_y + 105.0f;
-            float r2_y = s_y + 150.0f;
-            float r3_y = s_y + 195.0f;
-            float r4_y = s_y + 240.0f;
-            float r5_y = s_y + 285.0f;
+            float r1_y = s_y + 95.0f;
+            float r2_y = s_y + 132.0f;
+            float r3_y = s_y + 169.0f;
+            float r4_y = s_y + 206.0f;
+            float r5_y = s_y + 243.0f;
+            float r6_y = s_y + 280.0f;
             
             // Parameter 1: Time budget (- / +)
-            if (point_in_rect(mouse_x, mouse_y, step_x, r1_y, 40.0f, 35.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, step_x, r1_y, 40.0f, 32.0f)) {
                 step_double_val(&ui->engine_config.mcts_time_budget, s_mcts_time_budgets, sizeof(s_mcts_time_budgets)/sizeof(double), -1);
                 return true;
             }
-            if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f, r1_y, 40.0f, 35.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f, r1_y, 40.0f, 32.0f)) {
                 step_double_val(&ui->engine_config.mcts_time_budget, s_mcts_time_budgets, sizeof(s_mcts_time_budgets)/sizeof(double), 1);
                 return true;
             }
             
             // Parameter 2: Alpha (- / +)
-            if (point_in_rect(mouse_x, mouse_y, step_x, r2_y, 40.0f, 35.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, step_x, r2_y, 40.0f, 32.0f)) {
                 step_float_val(&ui->engine_config.mcts_exploration, s_mcts_alphas, sizeof(s_mcts_alphas)/sizeof(float), -1);
                 return true;
             }
-            if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f, r2_y, 40.0f, 35.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f, r2_y, 40.0f, 32.0f)) {
                 step_float_val(&ui->engine_config.mcts_exploration, s_mcts_alphas, sizeof(s_mcts_alphas)/sizeof(float), 1);
                 return true;
             }
             
             // Parameter 3: Max rollout depth (- / +)
-            if (point_in_rect(mouse_x, mouse_y, step_x, r3_y, 40.0f, 35.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, step_x, r3_y, 40.0f, 32.0f)) {
                 step_int_val(&ui->engine_config.mcts_max_rollout_depth, s_mcts_depths, sizeof(s_mcts_depths)/sizeof(int), -1);
                 return true;
             }
-            if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f, r3_y, 40.0f, 35.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f, r3_y, 40.0f, 32.0f)) {
                 step_int_val(&ui->engine_config.mcts_max_rollout_depth, s_mcts_depths, sizeof(s_mcts_depths)/sizeof(int), 1);
                 return true;
             }
+
+            // Parameter 4: Rollout Epsilon (- / +)
+            if (point_in_rect(mouse_x, mouse_y, step_x, r4_y, 40.0f, 32.0f)) {
+                step_float_val(&ui->engine_config.mcts_rollout_epsilon, s_mcts_epsilons, sizeof(s_mcts_epsilons)/sizeof(float), -1);
+                return true;
+            }
+            if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f, r4_y, 40.0f, 32.0f)) {
+                step_float_val(&ui->engine_config.mcts_rollout_epsilon, s_mcts_epsilons, sizeof(s_mcts_epsilons)/sizeof(float), 1);
+                return true;
+            }
             
-            // Parameter 4: Database toggle
-            if (point_in_rect(mouse_x, mouse_y, step_x, r4_y, 185.0f, 35.0f)) {
+            // Parameter 5: Database toggle
+            if (point_in_rect(mouse_x, mouse_y, step_x, r5_y, 185.0f, 32.0f)) {
                 ui->engine_config.mcts_use_db = !ui->engine_config.mcts_use_db;
                 return true;
             }
 
-            // Parameter 5: Debug log toggle
-            if (point_in_rect(mouse_x, mouse_y, step_x, r5_y, 185.0f, 35.0f)) {
+            // Parameter 6: Debug log toggle
+            if (point_in_rect(mouse_x, mouse_y, step_x, r6_y, 185.0f, 32.0f)) {
                 ui->engine_config.mcts_debug_log = !ui->engine_config.mcts_debug_log;
                 return true;
             }
             
         } else if (ui->settings_tab == 1) {
             // MCTS PUCT Controls
-            float r1_y = s_y + 100.0f;
-            float r2_y = s_y + 138.0f;
-            float r3_y = s_y + 176.0f;
-            float r4_y = s_y + 214.0f;
-            float r5_y = s_y + 252.0f;
-            float r6_y = s_y + 290.0f;
+            float r1_y = s_y + 92.0f;
+            float r2_y = s_y + 125.0f;
+            float r3_y = s_y + 158.0f;
+            float r4_y = s_y + 191.0f;
+            float r5_y = s_y + 224.0f;
+            float r6_y = s_y + 257.0f;
+            float r7_y = s_y + 290.0f;
             
             // Parameter 1: Time budget (- / +)
-            if (point_in_rect(mouse_x, mouse_y, step_x, r1_y, 40.0f, 32.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, step_x, r1_y, 40.0f, 30.0f)) {
                 step_double_val(&ui->engine_config.puct_time_budget, s_puct_time_budgets, sizeof(s_puct_time_budgets)/sizeof(double), -1);
                 return true;
             }
-            if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f, r1_y, 40.0f, 32.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f, r1_y, 40.0f, 30.0f)) {
                 step_double_val(&ui->engine_config.puct_time_budget, s_puct_time_budgets, sizeof(s_puct_time_budgets)/sizeof(double), 1);
                 return true;
             }
             
             // Parameter 2: c_puct (- / +)
-            if (point_in_rect(mouse_x, mouse_y, step_x, r2_y, 40.0f, 32.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, step_x, r2_y, 40.0f, 30.0f)) {
                 step_float_val(&ui->engine_config.puct_c_puct, s_puct_c_pucts, sizeof(s_puct_c_pucts)/sizeof(float), -1);
                 return true;
             }
-            if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f, r2_y, 40.0f, 32.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f, r2_y, 40.0f, 30.0f)) {
                 step_float_val(&ui->engine_config.puct_c_puct, s_puct_c_pucts, sizeof(s_puct_c_pucts)/sizeof(float), 1);
                 return true;
             }
 
             // Parameter 3: Temperature (- / +)
-            if (point_in_rect(mouse_x, mouse_y, step_x, r3_y, 40.0f, 32.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, step_x, r3_y, 40.0f, 30.0f)) {
                 step_float_val(&ui->engine_config.puct_temperature, s_puct_temperatures, sizeof(s_puct_temperatures)/sizeof(float), -1);
                 return true;
             }
-            if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f, r3_y, 40.0f, 32.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f, r3_y, 40.0f, 30.0f)) {
                 step_float_val(&ui->engine_config.puct_temperature, s_puct_temperatures, sizeof(s_puct_temperatures)/sizeof(float), 1);
                 return true;
             }
             
             // Parameter 4: Max rollout depth (- / +)
-            if (point_in_rect(mouse_x, mouse_y, step_x, r4_y, 40.0f, 32.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, step_x, r4_y, 40.0f, 30.0f)) {
                 step_int_val(&ui->engine_config.puct_max_rollout_depth, s_puct_depths, sizeof(s_puct_depths)/sizeof(int), -1);
                 return true;
             }
-            if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f, r4_y, 40.0f, 32.0f)) {
+            if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f, r4_y, 40.0f, 30.0f)) {
                 step_int_val(&ui->engine_config.puct_max_rollout_depth, s_puct_depths, sizeof(s_puct_depths)/sizeof(int), 1);
                 return true;
             }
+
+            // Parameter 5: Rollout Epsilon (- / +)
+            if (point_in_rect(mouse_x, mouse_y, step_x, r5_y, 40.0f, 30.0f)) {
+                step_float_val(&ui->engine_config.puct_rollout_epsilon, s_mcts_epsilons, sizeof(s_mcts_epsilons)/sizeof(float), -1);
+                return true;
+            }
+            if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f, r5_y, 40.0f, 30.0f)) {
+                step_float_val(&ui->engine_config.puct_rollout_epsilon, s_mcts_epsilons, sizeof(s_mcts_epsilons)/sizeof(float), 1);
+                return true;
+            }
             
-            // Parameter 5: Database toggle
-            if (point_in_rect(mouse_x, mouse_y, step_x, r5_y, 185.0f, 32.0f)) {
+            // Parameter 6: Database toggle
+            if (point_in_rect(mouse_x, mouse_y, step_x, r6_y, 185.0f, 30.0f)) {
                 ui->engine_config.puct_use_db = !ui->engine_config.puct_use_db;
                 return true;
             }
 
-            // Parameter 6: Debug log toggle
-            if (point_in_rect(mouse_x, mouse_y, step_x, r6_y, 185.0f, 32.0f)) {
+            // Parameter 7: Debug log toggle
+            if (point_in_rect(mouse_x, mouse_y, step_x, r7_y, 185.0f, 30.0f)) {
                 ui->engine_config.puct_debug_log = !ui->engine_config.puct_debug_log;
                 return true;
             }

@@ -5,7 +5,9 @@
 ______________________________________________________________________________*/
 
 #include "mcts_ucb1.h"
+#include "mcts_heuristic.h"
 #include "wld_db.h"
+#include "zobrist.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,21 +17,24 @@ ______________________________________________________________________________*/
 #define MAX_TREE_DEPTH 256
 
 typedef struct {
-    double   time_budget;
-    float    exploration_alpha;
-    int      max_rollout_depth;
-    bool     use_db;
-    bool     debug_log;
-    uint32_t root_idx;
-    uint32_t rng_state;
-    bool     has_prev_state;
-    GameState prev_game_state;
-    Move     prev_ai_move;
+    double             time_budget;
+    float              exploration_alpha;
+    int                max_rollout_depth;
+    float              rollout_epsilon;
+    bool               use_db;
+    bool               debug_log;
+    uint32_t           root_idx;
+    uint32_t           rng_state;
+    bool               has_prev_state;
+    GameState          prev_game_state;
+    Move               prev_ai_move;
+    TranspositionTable tt;
+    uint16_t           search_epoch;
 } MCTSEngineState;
 
-// Static Memory Pool of 2,000,000 nodes (~40 MB in BSS)
-static MCTSNode s_node_pool[MCTS_MAX_NODES];
-static uint32_t s_pool_tail = 0;
+// Per-thread dynamic preallocated memory pool of 2,000,000 nodes (~48 MB per active thread)
+static _Thread_local MCTSNode *s_node_pool = NULL;
+static _Thread_local uint32_t s_pool_tail = 0;
 
 static inline double mcts_get_time(void) {
     struct timespec ts;
@@ -47,15 +52,23 @@ static inline uint32_t xorshift32(uint32_t *state) {
     return x;
 }
 
+static void pool_ensure(void) {
+    if (!s_node_pool) {
+        s_node_pool = (MCTSNode*)malloc(sizeof(MCTSNode) * MCTS_MAX_NODES);
+    }
+}
+
 static void pool_reset(void) {
     s_pool_tail = 0;
 }
 
-static uint32_t create_root_node(void) {
+static uint32_t create_root_node(uint64_t hash) {
+    pool_ensure();
     if (s_pool_tail >= MCTS_MAX_NODES) {
         pool_reset();
     }
     uint32_t idx = s_pool_tail++;
+    s_node_pool[idx].hash = hash;
     s_node_pool[idx].visits = 0;
     s_node_pool[idx].wins = 0.0f;
     s_node_pool[idx].parent_idx = UINT32_MAX;
@@ -68,6 +81,7 @@ static uint32_t create_root_node(void) {
 
 void engine_mcts_ucb1_init(void **state) {
     wld_db_init();
+    zobrist_init();
     MCTSEngineState *st = (MCTSEngineState*)malloc(sizeof(MCTSEngineState));
     if (!st) {
         *state = NULL;
@@ -77,18 +91,23 @@ void engine_mcts_ucb1_init(void **state) {
     st->time_budget = MCTS_DEFAULT_TIME_BUDGET;
     st->exploration_alpha = MCTS_DEFAULT_EXPLORATION;
     st->max_rollout_depth = MCTS_MAX_ROLLOUT_DEPTH;
+    st->rollout_epsilon = MCTS_DEFAULT_ROLLOUT_EPSILON;
     st->use_db = true;
     st->debug_log = false;
     st->root_idx = UINT32_MAX;
     st->rng_state = (uint32_t)time(NULL) ^ 0x9E3779B9U;
     st->has_prev_state = false;
     st->prev_ai_move = MOVE_NONE;
+    st->search_epoch = 1;
+    tt_init(&st->tt, TT_DEFAULT_SIZE);
     *state = st;
 }
 
 void engine_mcts_ucb1_cleanup(void *state) {
     if (state) {
-        free(state);
+        MCTSEngineState *st = (MCTSEngineState*)state;
+        tt_free(&st->tt);
+        free(st);
     }
 }
 
@@ -110,6 +129,12 @@ void engine_mcts_ucb1_set_max_rollout_depth(void *state, int depth) {
     }
 }
 
+void engine_mcts_ucb1_set_rollout_epsilon(void *state, float epsilon) {
+    if (state && epsilon >= 0.0f && epsilon <= 1.0f) {
+        ((MCTSEngineState*)state)->rollout_epsilon = epsilon;
+    }
+}
+
 void engine_mcts_ucb1_set_use_db(void *state, bool enable) {
     if (state) {
         ((MCTSEngineState*)state)->use_db = enable;
@@ -128,7 +153,7 @@ uint32_t engine_mcts_ucb1_get_node_count(void) {
 }
 
 uint32_t engine_mcts_ucb1_get_root_visits(void *state) {
-    if (!state) return 0;
+    if (!state || !s_node_pool) return 0;
     MCTSEngineState *st = (MCTSEngineState*)state;
     if (st->root_idx == UINT32_MAX || st->root_idx >= s_pool_tail) return 0;
     return s_node_pool[st->root_idx].visits;
@@ -456,7 +481,7 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
     }
 
 
-    // Subtree Promotion (Tree Reuse)
+    // Subtree Promotion (Tree Reuse with 64-bit Zobrist Hash)
     bool tree_reused = false;
     if (st->has_prev_state && st->root_idx != UINT32_MAX && st->root_idx < s_pool_tail) {
         // Find AI's previous move among old root's children
@@ -474,16 +499,11 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
 
         // If AI's child node was found, look among its children for the opponent's response
         if (ai_child_idx != UINT32_MAX && s_node_pool[ai_child_idx].first_child_idx != UINT32_MAX) {
-            GameState after_ai = st->prev_game_state;
-            game_execute_move(&after_ai, st->prev_ai_move);
-
             uint32_t opp_fc = s_node_pool[ai_child_idx].first_child_idx;
             uint8_t opp_nc = s_node_pool[ai_child_idx].num_children;
             for (uint8_t j = 0; j < opp_nc; j++) {
-                GameState test_state = after_ai;
-                game_execute_move(&test_state, s_node_pool[opp_fc + j].move);
-                if (boards_equal(&test_state.board, &game->board)) {
-                    // Subtree found! Promote to new root
+                if (s_node_pool[opp_fc + j].hash == game->hash) {
+                    // Subtree found via direct Zobrist 64-bit hash match! Promote to new root
                     st->root_idx = opp_fc + j;
                     s_node_pool[st->root_idx].parent_idx = UINT32_MAX;
                     tree_reused = true;
@@ -495,8 +515,14 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
 
     if (!tree_reused) {
         pool_reset();
-        st->root_idx = create_root_node();
+        tt_clear(&st->tt);
+        st->search_epoch = 1;
+        st->root_idx = create_root_node(game->hash);
+    } else {
+        st->search_epoch++;
     }
+
+    tt_store(&st->tt, game->hash, st->root_idx, 0, st->search_epoch);
 
     // Ensure root children are generated
     if (s_node_pool[st->root_idx].first_child_idx == UINT32_MAX) {
@@ -507,6 +533,9 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
             s_pool_tail += root_valid_moves.count;
             s_node_pool[st->root_idx].first_child_idx = start_c;
             for (uint8_t i = 0; i < root_valid_moves.count; i++) {
+                GameState child_st = *game;
+                game_execute_move(&child_st, root_valid_moves.moves[i]);
+                s_node_pool[start_c + i].hash = child_st.hash;
                 s_node_pool[start_c + i].visits = 0;
                 s_node_pool[start_c + i].wins = 0.0f;
                 s_node_pool[start_c + i].parent_idx = st->root_idx;
@@ -514,6 +543,7 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
                 s_node_pool[start_c + i].move = root_valid_moves.moves[i];
                 s_node_pool[start_c + i].num_children = 0;
                 s_node_pool[start_c + i].unexpanded_idx = 0;
+                tt_store(&st->tt, child_st.hash, start_c + i, 1, st->search_epoch);
             }
         }
     }
@@ -570,6 +600,9 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
             game_execute_move(&curr_state, s_node_pool[best_child].move);
             curr_idx = best_child;
             path_stack[path_len++] = curr_idx;
+
+            // Probe transposition table for statistics
+            tt_probe(&st->tt, curr_state.hash);
         }
 
         // 2. EXPANSION
@@ -586,6 +619,9 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
                     s_node_pool[curr_idx].first_child_idx = start_c;
 
                     for (uint8_t i = 0; i < ml.count; i++) {
+                        GameState child_st = curr_state;
+                        game_execute_move(&child_st, ml.moves[i]);
+                        s_node_pool[start_c + i].hash = child_st.hash;
                         s_node_pool[start_c + i].visits = 0;
                         s_node_pool[start_c + i].wins = 0.0f;
                         s_node_pool[start_c + i].parent_idx = curr_idx;
@@ -593,6 +629,7 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
                         s_node_pool[start_c + i].move = ml.moves[i];
                         s_node_pool[start_c + i].num_children = 0;
                         s_node_pool[start_c + i].unexpanded_idx = 0;
+                        tt_store(&st->tt, child_st.hash, start_c + i, (uint16_t)path_len, st->search_epoch);
                     }
                 }
             }
@@ -608,10 +645,11 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
             }
         }
 
-        // 3. SIMULATION (ROLLOUT)
+        // 3. SIMULATION (ROLLOUT - BIASED HEURISTIC POLICY)
         GameState rollout_state = curr_state;
         int rollout_depth = 0;
         int max_depth = st->max_rollout_depth;
+        float eps = st->rollout_epsilon;
         while (!rollout_state.is_game_over && rollout_depth < max_depth) {
             if (st->use_db && wld_db_is_endgame(&rollout_state.board)) {
                 WLDValue wld = wld_db_probe(&rollout_state);
@@ -626,8 +664,7 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
                 rollout_state.winner = (rollout_state.current_player == PLAYER_WHITE) ? PLAYER_BLACK : PLAYER_WHITE;
                 break;
             }
-            uint32_t r = xorshift32(&st->rng_state);
-            Move rm = ml.moves[r % ml.count];
+            Move rm = mcts_select_biased_rollout_move(&rollout_state, &ml, eps, &st->rng_state);
             game_execute_move(&rollout_state, rm);
             rollout_depth++;
         }
@@ -681,13 +718,18 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
     if (st->debug_log) {
         double elapsed = mcts_get_time() - start_time;
         printf("\n================================================================================\n");
-        printf("[MCTS DEBUG LOG - MONTE CARLO TREE SEARCH]\n");
+        printf("[MCTS DEBUG LOG - MONTE CARLO TREE SEARCH (UCB1)]\n");
         printf("Giocatore: %s | Mosse legali: %d | Nodi pool allocati: %u / %d\n",
                (ai_player == PLAYER_WHITE) ? "BIANCO" : "NERO", root_valid_moves.count, s_pool_tail, MCTS_MAX_NODES);
         printf("Budget tempo: %.2fs | Tempo impiegato: %.3fs | Simulazioni totali: %u\n",
                st->time_budget, elapsed, iterations);
-        printf("Parametri: Alpha = %.2f | Profondita Max Rollout = %d\n",
-               st->exploration_alpha, st->max_rollout_depth);
+        printf("Parametri: Alpha = %.2f | Epsilon Rollout = %.2f | Profondita Max Rollout = %d\n",
+               st->exploration_alpha, st->rollout_epsilon, st->max_rollout_depth);
+        printf("Transposition Table: Occupazione = %u / %u (%.1f%%) | Hits = %u / %u (%.2f%%)\n",
+               st->tt.count, st->tt.size,
+               (float)st->tt.count * 100.0f / (float)st->tt.size,
+               st->tt.hits, st->tt.lookups,
+               tt_get_hit_rate(&st->tt));
         printf("--------------------------------------------------------------------------------\n");
         printf("  # | Mossa            | Visite (N)     | Win Rate (w/N) | Punteggio / Q | Note\n");
         printf("--------------------------------------------------------------------------------\n");

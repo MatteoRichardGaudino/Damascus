@@ -40,9 +40,12 @@ set(SOURCES
     src/engine_kingsrow.c
     src/mcts_ucb1.c
     src/mcts_puct.c
+    src/zobrist.c
+    src/transposition.c
     src/wld_db.c
     src/interaction.c
     src/ui.c
+    src/cli.c
     third_party/glad/glad.c
 )
 
@@ -55,9 +58,12 @@ target_include_directories(Damascus PRIVATE
     ${glfw_SOURCE_DIR}/include
 )
 
+find_package(Threads REQUIRED)
+
 target_link_libraries(Damascus PRIVATE
     glfw
     cglm
+    Threads::Threads
 )
 
 if(APPLE)

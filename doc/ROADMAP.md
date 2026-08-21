@@ -19,12 +19,12 @@ While the core board representation (128-bit bitboard), move generator (FID 4-ti
 | **Pure C Implementation** | ✅ Compliant (C11) | Maintain C-only standard for all new modules. |
 | **Italian Draughts Rules (FID)** | ✅ Compliant | Fully validated (forced captures, quality priority). |
 | **MCTS Exploration Models** | ✅ Compliant (UCB1 & PUCT) | Both UCB1 and PUCT models implemented & tested. |
-| **Thinking Time Profiles** | ⚠️ Partial (Custom list) | Align UI/CLI presets strictly to `0.2s`, `1.0s`, `3.0s`. |
-| **Zobrist Hashing / Transposition** | ❌ Missing | Implement 64-bit Zobrist hashing & Transposition Table. |
-| **Heuristic / Biased Rollouts** | ❌ Missing | Replace purely uniform random rollouts with tactical bias. |
-| **Headless Tournament CLI** | ❌ Missing | Implement CLI mode for running matches without GUI. |
+| **Thinking Time Profiles** | ✅ Compliant | Presets aligned strictly to `0.2s` (Fast), `1.0s` (Medium), `3.0s` (Slow). |
+| **Zobrist Hashing / Transposition** | ✅ Compliant | Implemented 64-bit Zobrist hashing & Transposition Table. |
+| **Heuristic / Biased Rollouts** | ✅ Compliant | Zero-allocation $\epsilon$-greedy rollout policy with FID heuristics. |
+| **Headless Tournament CLI** | ✅ Compliant | Full CLI mode for matches, round-robin tournaments, benchmarks. |
 | **Principled Parameter Tuning** | ❌ Missing | Implement automated hyperparameter tuning (GA / Round-Robin). |
-| **Experimental Data Export** | ❌ Missing | Implement CSV/JSON logging for empirical report generation. |
+| **Experimental Data Export** | ✅ Compliant | Automatic CSV export for matches, tournaments, and benchmarks. |
 
 ---
 
@@ -35,11 +35,11 @@ The following sections are organized in strict chronological order of execution.
 ```
 [Phase 1: PUCT Selection Model] ✅ Completed
            ↓
-[Phase 2: Zobrist Hashing & Transposition Table]
+[Phase 2: Zobrist Hashing & Transposition Table] ✅ Completed
            ↓
-[Phase 3: Tactical / Biased Rollouts]
+[Phase 3: Tactical / Biased Rollouts] ✅ Completed
            ↓
-[Phase 4: Headless CLI & Tournament Runner]
+[Phase 4: Headless CLI & Tournament Runner] ✅ Completed
            ↓
 [Phase 5: Automated Hyperparameter Tuning Engine]
            ↓
@@ -84,24 +84,27 @@ Where:
 
 ---
 
-### Phase 2: Zobrist Hashing & Transposition Table
+### Phase 2: Zobrist Hashing & Transposition Table ✅ COMPLETED
 
 Replace full board state comparisons with 64-bit Zobrist hashing for rapid subtree reuse, transposition detection, and repetition tracking.
 
 #### 2.1 Hashing Specifications
-- 64-bit pseudo-random keys initialized with deterministic seed (e.g. SplitMix64 / Mersenne Twister):
-  - `zobrist_piece[piece_type][sq]` (4 piece types $\times$ 32 dark squares).
-  - `zobrist_player` (turn toggle).
+- 64-bit pseudo-random keys initialized with deterministic seed (SplitMix64):
+  - `g_zobrist_pieces[piece_type][sq]` (4 piece types $\times$ 32 dark squares).
+  - `g_zobrist_player` (turn toggle).
 - Incremental update during `game_execute_move()` via XOR operations:
   $$\text{hash}' = \text{hash} \oplus \text{zobrist\_piece}[p][\text{from}] \oplus \text{zobrist\_piece}[p'][\text{to}] \oplus \bigoplus_{c} \text{zobrist\_piece}[cap][c] \oplus \text{zobrist\_player}$$
+- Fast repetition checking in `game_get_repetition_count()` via 64-bit integer comparisons on history hashes.
 
 #### 2.2 Transposition Table in MCTS
-- Allows states reached via different move orders (transpositions) to share visit and value statistics.
-- Compact hash table with bucket array: `uint64_t key`, `uint32_t node_idx`, `uint8_t depth`.
+- Dedicated high-performance Transposition Table (`src/transposition.h`, `src/transposition.c`):
+  - Preallocated 524,288 entries ($\approx 8.4\text{ MB}$, zero allocations in search).
+  - Stores `uint64_t key`, `uint32_t node_idx`, `uint16_t depth`, `uint16_t age`.
+  - Integrated into both `MCTS UCB1` and `MCTS PUCT` selection, expansion, subtree reuse, and real-time debug HUD.
 
 ---
 
-### Phase 3: Tactical / Biased Rollouts (Heuristic Simulation Policy)
+### Phase 3: Tactical / Biased Rollouts (Heuristic Simulation Policy) ✅ COMPLETED
 
 Uniformly random rollouts in Draughts often generate unrealistic piece sacrifices and prolonged draw loops. Introducing a lightweight, zero-allocation $\epsilon$-greedy rollout policy dramatically increases simulation quality.
 
@@ -110,29 +113,36 @@ Uniformly random rollouts in Draughts often generate unrealistic piece sacrifice
 - **With probability $\epsilon$ (e.g., $15\%$)**: Select a uniform random legal move for exploration diversity.
 - Keep rollout execution allocations at **strictly zero** (in-place `GameState` mutations).
 
+#### 3.2 Architecture & Files
+- Implemented header-only zero-allocation evaluator and selector in `src/mcts_heuristic.h`.
+- Integrated biased simulation loops and configurable $\epsilon_{\text{rollout}}$ into both `src/mcts_ucb1.c` and `src/mcts_puct.c`.
+- Added `mcts_rollout_epsilon` and `puct_rollout_epsilon` to `EngineConfig` in `src/engine.h` and `src/engine_random.c`.
+- Added interactive $\epsilon_{\text{rollout}}$ stepper controls in settings UI (`src/ui.c`).
+
 ---
 
-### Phase 4: Headless CLI Tournament & Benchmark Runner
+### Phase 4: Headless CLI Tournament & Benchmark Runner ✅ COMPLETED
 
-Allow executing matches and tournaments directly from the terminal without initializing GLFW/OpenGL.
+Allows executing matches and tournaments directly from the terminal without initializing GLFW/OpenGL.
 
 #### 4.1 CLI Interface Requirements
-Add command-line flag parser in `src/main.c` (or a dedicated `src/cli.c`):
+Implemented dedicated CLI module in `src/cli.h` and `src/cli.c`, integrated into `src/main.c`:
 
 ```bash
-# Run a single match between two engines
-./Damascus --match --white=mcts_ucb1 --black=checkerboard --time=1.0 --games=10
+# Run a single match between two engines (with CSV export)
+./Damascus --match --white=mcts_ucb1 --black=checkerboard --time=1.0 --games=10 --csv=results/match.csv
 
 # Run a Round-Robin tournament between all available engines
-./Damascus --tournament --engines=ucb1,puct,checkerboard,kingsrow,random --time=0.2 --games-per-pair=50
+./Damascus --tournament --engines=ucb1,puct,checkerboard,kingsrow,random --time=0.2 --games-per-pair=50 --csv=results/tourney.csv
 
-# Run speed benchmark
-./Damascus --bench --budget=0.2,1.0,3.0
+# Run speed and throughput benchmark
+./Damascus --bench --budget=0.2,1.0,3.0 --csv=results/bench.csv
 ```
 
 #### 4.2 Output Formats
-- Real-time progress bar and move ticker to `stderr`.
-- Match results, plies, outcome (Win White / Win Black / Draw), and timing to `stdout` and CSV export.
+- Real-time ANSI progress bar and move ticker to `stderr` (`\r` dynamic updates with piece counts and active turn).
+- Match summary results, Cross-Table matrix, Leaderboard, plies, and timing to `stdout`.
+- Detailed game-by-game CSV logging for empirical evaluation.
 
 ---
 

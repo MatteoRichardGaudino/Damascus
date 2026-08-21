@@ -5,7 +5,9 @@
 ______________________________________________________________________________*/
 
 #include "mcts_puct.h"
+#include "mcts_heuristic.h"
 #include "wld_db.h"
+#include "zobrist.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,22 +17,25 @@ ______________________________________________________________________________*/
 #define MAX_TREE_DEPTH 256
 
 typedef struct {
-    double   time_budget;
-    float    c_puct;
-    float    temperature;
-    int      max_rollout_depth;
-    bool     use_db;
-    bool     debug_log;
-    uint32_t root_idx;
-    uint32_t rng_state;
-    bool     has_prev_state;
-    GameState prev_game_state;
-    Move     prev_ai_move;
+    double             time_budget;
+    float              c_puct;
+    float              temperature;
+    int                max_rollout_depth;
+    float              rollout_epsilon;
+    bool               use_db;
+    bool               debug_log;
+    uint32_t           root_idx;
+    uint32_t           rng_state;
+    bool               has_prev_state;
+    GameState          prev_game_state;
+    Move               prev_ai_move;
+    TranspositionTable tt;
+    uint16_t           search_epoch;
 } PUCTEngineState;
 
-// Static Memory Pool of 2,000,000 nodes (~48 MB in BSS)
-static PUCTNode s_node_pool[PUCT_MAX_NODES];
-static uint32_t s_pool_tail = 0;
+// Per-thread dynamic preallocated memory pool of 2,000,000 nodes (~48 MB per active thread)
+static _Thread_local PUCTNode *s_node_pool = NULL;
+static _Thread_local uint32_t s_pool_tail = 0;
 
 static inline double puct_get_time(void) {
     struct timespec ts;
@@ -48,15 +53,23 @@ static inline uint32_t xorshift32(uint32_t *state) {
     return x;
 }
 
+static void pool_ensure(void) {
+    if (!s_node_pool) {
+        s_node_pool = (PUCTNode*)malloc(sizeof(PUCTNode) * PUCT_MAX_NODES);
+    }
+}
+
 static void pool_reset(void) {
     s_pool_tail = 0;
 }
 
-static uint32_t create_root_node(void) {
+static uint32_t create_root_node(uint64_t hash) {
+    pool_ensure();
     if (s_pool_tail >= PUCT_MAX_NODES) {
         pool_reset();
     }
     uint32_t idx = s_pool_tail++;
+    s_node_pool[idx].hash = hash;
     s_node_pool[idx].visits = 0;
     s_node_pool[idx].wins = 0.0f;
     s_node_pool[idx].prior = 1.0f;
@@ -68,83 +81,9 @@ static uint32_t create_root_node(void) {
     return idx;
 }
 
-/* Fast Domain Heuristic H(s, a) for Italian Draughts:
-   - King capture: +3.0
-   - Man capture: +1.5
-   - Promotion move: +2.0
-   - King move: +0.5
-   - Advancement towards promotion rank: +0.2 * Delta_row
-   - Moving away from base back-rank defense: -0.3
-*/
+/* Fast Domain Heuristic H(s, a) for Italian Draughts (FID rules) */
 float puct_compute_heuristic(const GameState *state, Move move) {
-    if (move_is_none(move)) return 0.0f;
-
-    Player player = state->current_player;
-    float h = 0.0f;
-
-    // 1. Captures Evaluation (King vs Man)
-    if (move.is_cap) {
-        uint32_t opp_kings = (player == PLAYER_WHITE) ? state->board.black_kings : state->board.white_kings;
-        uint32_t opp_men   = (player == PLAYER_WHITE) ? state->board.black_men : state->board.white_men;
-
-        if (move.jumps > 0) {
-            for (int j = 0; j < move.jumps; j++) {
-                uint8_t cap_sq = move.caps[j];
-                if (cap_sq < 32) {
-                    uint32_t mask = 1U << cap_sq;
-                    if (opp_kings & mask) {
-                        h += 3.0f;
-                    } else if (opp_men & mask) {
-                        h += 1.5f;
-                    } else {
-                        h += 1.5f; // Fallback man capture
-                    }
-                }
-            }
-        } else if (move.cap_mask != 0) {
-            uint32_t mask = move.cap_mask;
-            while (mask) {
-                int cap_sq = __builtin_ctz(mask);
-                mask &= mask - 1;
-                uint32_t sq_bit = 1U << cap_sq;
-                if (opp_kings & sq_bit) {
-                    h += 3.0f;
-                } else {
-                    h += 1.5f;
-                }
-            }
-        } else {
-            h += 1.5f;
-        }
-    }
-
-    // 2. Promotion move: +2.0
-    if (MOVE_IS_PROM(move)) {
-        h += 2.0f;
-    }
-
-    // 3. King move: +0.5
-    if (move.piece_type == 1) {
-        h += 0.5f;
-    }
-
-    // 4. Advancement towards promotion rank (for Men): +0.2 * Delta_row
-    int from_row = SQ_TO_ROW(move.from);
-    int to_row   = SQ_TO_ROW(move.to);
-    if (move.piece_type == 0) {
-        int delta_row = (player == PLAYER_WHITE) ? (to_row - from_row) : (from_row - to_row);
-        if (delta_row > 0) {
-            h += 0.2f * (float)delta_row;
-        }
-    }
-
-    // 5. Moving away from base back-rank defense: -0.3
-    int base_row = (player == PLAYER_WHITE) ? 0 : 7;
-    if (from_row == base_row) {
-        h -= 0.3f;
-    }
-
-    return h;
+    return mcts_compute_move_heuristic(state, move);
 }
 
 // Compute Softmax Prior Policy P(s, a) = exp(H(s, a) / tau) / sum(exp(H(s, b) / tau))
@@ -161,7 +100,7 @@ static void compute_priors(const GameState *state, const MoveList *moves, float 
     float max_h = -1e9f;
 
     for (int i = 0; i < moves->count; i++) {
-        h_scores[i] = puct_compute_heuristic(state, moves->moves[i]);
+        h_scores[i] = mcts_compute_move_heuristic(state, moves->moves[i]);
         if (h_scores[i] > max_h) {
             max_h = h_scores[i];
         }
@@ -182,6 +121,7 @@ static void compute_priors(const GameState *state, const MoveList *moves, float 
 
 void engine_mcts_puct_init(void **state) {
     wld_db_init();
+    zobrist_init();
     PUCTEngineState *st = (PUCTEngineState*)malloc(sizeof(PUCTEngineState));
     if (!st) {
         *state = NULL;
@@ -192,18 +132,23 @@ void engine_mcts_puct_init(void **state) {
     st->c_puct = PUCT_DEFAULT_C_PUCT;
     st->temperature = PUCT_DEFAULT_TEMPERATURE;
     st->max_rollout_depth = PUCT_MAX_ROLLOUT_DEPTH;
+    st->rollout_epsilon = PUCT_DEFAULT_ROLLOUT_EPSILON;
     st->use_db = true;
     st->debug_log = false;
     st->root_idx = UINT32_MAX;
     st->rng_state = (uint32_t)time(NULL) ^ 0xA55AA55AU;
     st->has_prev_state = false;
     st->prev_ai_move = MOVE_NONE;
+    st->search_epoch = 1;
+    tt_init(&st->tt, TT_DEFAULT_SIZE);
     *state = st;
 }
 
 void engine_mcts_puct_cleanup(void *state) {
     if (state) {
-        free(state);
+        PUCTEngineState *st = (PUCTEngineState*)state;
+        tt_free(&st->tt);
+        free(st);
     }
 }
 
@@ -231,6 +176,12 @@ void engine_mcts_puct_set_max_rollout_depth(void *state, int depth) {
     }
 }
 
+void engine_mcts_puct_set_rollout_epsilon(void *state, float epsilon) {
+    if (state && epsilon >= 0.0f && epsilon <= 1.0f) {
+        ((PUCTEngineState*)state)->rollout_epsilon = epsilon;
+    }
+}
+
 void engine_mcts_puct_set_use_db(void *state, bool enable) {
     if (state) {
         ((PUCTEngineState*)state)->use_db = enable;
@@ -248,7 +199,7 @@ uint32_t engine_mcts_puct_get_node_count(void) {
 }
 
 uint32_t engine_mcts_puct_get_root_visits(void *state) {
-    if (!state) return 0;
+    if (!state || !s_node_pool) return 0;
     PUCTEngineState *st = (PUCTEngineState*)state;
     if (st->root_idx == UINT32_MAX || st->root_idx >= s_pool_tail) return 0;
     return s_node_pool[st->root_idx].visits;
@@ -545,7 +496,7 @@ static uint32_t puct_select_child(uint32_t parent_idx, float c_puct) {
 }
 
 // Expand node in PUCT tree and assign domain heuristic priors
-static bool puct_expand_node(uint32_t node_idx, const GameState *state, float temperature) {
+static bool puct_expand_node(uint32_t node_idx, const GameState *state, float temperature, TranspositionTable *tt, uint16_t epoch, uint16_t depth) {
     if (s_node_pool[node_idx].first_child_idx != UINT32_MAX) return true;
 
     MoveList ml = *game_get_valid_moves(state);
@@ -568,6 +519,9 @@ static bool puct_expand_node(uint32_t node_idx, const GameState *state, float te
     s_node_pool[node_idx].first_child_idx = start_c;
 
     for (uint8_t i = 0; i < ml.count; i++) {
+        GameState child_st = *state;
+        game_execute_move(&child_st, ml.moves[i]);
+        s_node_pool[start_c + i].hash = child_st.hash;
         s_node_pool[start_c + i].visits = 0;
         s_node_pool[start_c + i].wins = 0.0f;
         s_node_pool[start_c + i].prior = priors[i];
@@ -576,6 +530,9 @@ static bool puct_expand_node(uint32_t node_idx, const GameState *state, float te
         s_node_pool[start_c + i].move = ml.moves[i];
         s_node_pool[start_c + i].num_children = 0;
         s_node_pool[start_c + i].unexpanded_idx = 0;
+        if (tt) {
+            tt_store(tt, child_st.hash, start_c + i, depth, epoch);
+        }
     }
 
     return true;
@@ -624,7 +581,7 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
         st->root_idx = UINT32_MAX;
     }
 
-    // Subtree Promotion (Tree Reuse)
+    // Subtree Promotion (Tree Reuse with 64-bit Zobrist Hash)
     bool tree_reused = false;
     if (st->has_prev_state && st->root_idx != UINT32_MAX && st->root_idx < s_pool_tail) {
         uint32_t ai_child_idx = UINT32_MAX;
@@ -640,15 +597,10 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
         }
 
         if (ai_child_idx != UINT32_MAX && s_node_pool[ai_child_idx].first_child_idx != UINT32_MAX) {
-            GameState after_ai = st->prev_game_state;
-            game_execute_move(&after_ai, st->prev_ai_move);
-
             uint32_t opp_fc = s_node_pool[ai_child_idx].first_child_idx;
             uint8_t opp_nc = s_node_pool[ai_child_idx].num_children;
             for (uint8_t j = 0; j < opp_nc; j++) {
-                GameState test_state = after_ai;
-                game_execute_move(&test_state, s_node_pool[opp_fc + j].move);
-                if (boards_equal(&test_state.board, &game->board)) {
+                if (s_node_pool[opp_fc + j].hash == game->hash) {
                     st->root_idx = opp_fc + j;
                     s_node_pool[st->root_idx].parent_idx = UINT32_MAX;
                     tree_reused = true;
@@ -660,12 +612,18 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
 
     if (!tree_reused) {
         pool_reset();
-        st->root_idx = create_root_node();
+        tt_clear(&st->tt);
+        st->search_epoch = 1;
+        st->root_idx = create_root_node(game->hash);
+    } else {
+        st->search_epoch++;
     }
+
+    tt_store(&st->tt, game->hash, st->root_idx, 0, st->search_epoch);
 
     // Ensure root children are generated with domain heuristic priors
     if (s_node_pool[st->root_idx].first_child_idx == UINT32_MAX) {
-        puct_expand_node(st->root_idx, game, st->temperature);
+        puct_expand_node(st->root_idx, game, st->temperature, &st->tt, st->search_epoch, 1);
     }
 
     // High-performance Anytime Search Loop with PUCT Policy
@@ -702,6 +660,9 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
             path_stack[path_len++] = best_child;
             curr_idx = best_child;
 
+            // Probe TT for statistics
+            tt_probe(&st->tt, curr_state.hash);
+
             // If an unvisited child is reached, stop selection and proceed to simulation
             if (s_node_pool[curr_idx].visits == 0) {
                 break;
@@ -711,7 +672,7 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
         // 2. EXPANSION (if reached node was previously visited and not expanded yet)
         if (!curr_state.is_game_over && path_len < MAX_TREE_DEPTH - 2) {
             if (s_node_pool[curr_idx].first_child_idx == UINT32_MAX) {
-                if (puct_expand_node(curr_idx, &curr_state, temperature)) {
+                if (puct_expand_node(curr_idx, &curr_state, temperature, &st->tt, st->search_epoch, (uint16_t)path_len)) {
                     // Pick top child by PUCT/prior to step into
                     uint32_t best_child = puct_select_child(curr_idx, c_puct);
                     if (best_child != UINT32_MAX) {
@@ -723,10 +684,11 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
             }
         }
 
-        // 3. SIMULATION (ROLLOUT)
+        // 3. SIMULATION (ROLLOUT - BIASED HEURISTIC POLICY)
         GameState rollout_state = curr_state;
         int rollout_depth = 0;
         int max_depth = st->max_rollout_depth;
+        float eps = st->rollout_epsilon;
         while (!rollout_state.is_game_over && rollout_depth < max_depth) {
             if (st->use_db && wld_db_is_endgame(&rollout_state.board)) {
                 WLDValue wld = wld_db_probe(&rollout_state);
@@ -741,8 +703,7 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
                 rollout_state.winner = (rollout_state.current_player == PLAYER_WHITE) ? PLAYER_BLACK : PLAYER_WHITE;
                 break;
             }
-            uint32_t r = xorshift32(&st->rng_state);
-            Move rm = ml.moves[r % ml.count];
+            Move rm = mcts_select_biased_rollout_move(&rollout_state, &ml, eps, &st->rng_state);
             game_execute_move(&rollout_state, rm);
             rollout_depth++;
         }
@@ -796,8 +757,13 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
                (ai_player == PLAYER_WHITE) ? "BIANCO" : "NERO", root_valid_moves.count, s_pool_tail, PUCT_MAX_NODES);
         printf("Budget tempo: %.2fs | Tempo impiegato: %.3fs | Simulazioni totali: %u\n",
                st->time_budget, elapsed, iterations);
-        printf("Parametri: c_puct = %.2f | Temp (tau) = %.2f | Profondita Max Rollout = %d\n",
-               st->c_puct, st->temperature, st->max_rollout_depth);
+        printf("Parametri: c_puct = %.2f | Temp (tau) = %.2f | Epsilon Rollout = %.2f | Profondita Max Rollout = %d\n",
+               st->c_puct, st->temperature, st->rollout_epsilon, st->max_rollout_depth);
+        printf("Transposition Table: Occupazione = %u / %u (%.1f%%) | Hits = %u / %u (%.2f%%)\n",
+               st->tt.count, st->tt.size,
+               (float)st->tt.count * 100.0f / (float)st->tt.size,
+               st->tt.hits, st->tt.lookups,
+               tt_get_hit_rate(&st->tt));
         printf("--------------------------------------------------------------------------------\n");
         printf("  # | Mossa            | Prior P(s,a) | Visite (N)     | Win Rate (w/N) | Q      | Note\n");
         printf("--------------------------------------------------------------------------------\n");

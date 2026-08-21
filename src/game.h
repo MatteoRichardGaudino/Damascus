@@ -103,6 +103,7 @@ typedef struct {
     uint32_t bm;
     uint32_t bk;
     uint8_t  player;
+    uint64_t hash;
 } PositionKey;
 
 typedef struct {
@@ -125,6 +126,8 @@ typedef struct {
     bool is_game_over;
     bool is_draw;
     Player winner;
+    
+    uint64_t hash; // 64-bit Zobrist hash of board and player
     
     int history_count;
     PositionKey history[MAX_GAME_HISTORY];
