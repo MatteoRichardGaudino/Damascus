@@ -50,11 +50,17 @@ static inline void set_packed(uint8_t *arr, uint32_t idx, uint8_t val) {
     arr[byte_idx] = (arr[byte_idx] & ~(0x3 << shift)) | ((val & 0x3) << shift);
 }
 
+static uint8_t s_c2_w1[496];
+static uint8_t s_c2_w2[496];
+
 static void init_tables(void) {
     uint16_t idx2 = 0;
     for (int i = 0; i < 32; i++) {
         for (int j = i + 1; j < 32; j++) {
-            s_c2[i][j] = idx2++;
+            s_c2[i][j] = idx2;
+            s_c2_w1[idx2] = i;
+            s_c2_w2[idx2] = j;
+            idx2++;
         }
     }
     uint16_t idx3 = 0;
@@ -126,7 +132,7 @@ static inline bool decode_1v1(uint32_t idx, GameState *out) {
     int w_type = idx & 1; idx >>= 1;
     int b_sq = idx % 32; idx /= 32;
     int w_sq = idx;
-    if (w_sq == b_sq) return false;
+    if (w_sq >= 32 || w_sq == b_sq) return false;
 
     memset(out, 0, sizeof(GameState));
     out->current_player = turn;
@@ -134,6 +140,62 @@ static inline bool decode_1v1(uint32_t idx, GameState *out) {
     else out->board.white_kings = (1U << w_sq);
     if (b_type == 0) out->board.black_men = (1U << b_sq);
     else out->board.black_kings = (1U << b_sq);
+    return true;
+}
+
+static inline bool decode_2v1(uint32_t idx, GameState *out) {
+    Player turn = (Player)(idx & 1); idx >>= 1;
+    int b_t = idx & 1; idx >>= 1;
+    int b_sq = idx % 32; idx /= 32;
+    int w_types = idx & 3; idx >>= 2;
+    int c2 = idx;
+    if (c2 >= 496) return false;
+
+    int w1 = s_c2_w1[c2];
+    int w2 = s_c2_w2[c2];
+    if (b_sq == w1 || b_sq == w2) return false;
+
+    int wt1 = (w_types >> 1) & 1;
+    int wt2 = w_types & 1;
+
+    memset(out, 0, sizeof(GameState));
+    out->current_player = turn;
+    if (wt1 == 0) out->board.white_men |= (1U << w1);
+    else out->board.white_kings |= (1U << w1);
+    if (wt2 == 0) out->board.white_men |= (1U << w2);
+    else out->board.white_kings |= (1U << w2);
+
+    if (b_t == 0) out->board.black_men |= (1U << b_sq);
+    else out->board.black_kings |= (1U << b_sq);
+
+    return true;
+}
+
+static inline bool decode_1v2(uint32_t idx, GameState *out) {
+    Player turn = (Player)(idx & 1); idx >>= 1;
+    int w_t = idx & 1; idx >>= 1;
+    int w_sq = idx % 32; idx /= 32;
+    int b_types = idx & 3; idx >>= 2;
+    int c2 = idx;
+    if (c2 >= 496) return false;
+
+    int b1 = s_c2_w1[c2];
+    int b2 = s_c2_w2[c2];
+    if (w_sq == b1 || w_sq == b2) return false;
+
+    int bt1 = (b_types >> 1) & 1;
+    int bt2 = b_types & 1;
+
+    memset(out, 0, sizeof(GameState));
+    out->current_player = turn;
+    if (w_t == 0) out->board.white_men |= (1U << w_sq);
+    else out->board.white_kings |= (1U << w_sq);
+
+    if (bt1 == 0) out->board.black_men |= (1U << b1);
+    else out->board.black_kings |= (1U << b1);
+    if (bt2 == 0) out->board.black_men |= (1U << b2);
+    else out->board.black_kings |= (1U << b2);
+
     return true;
 }
 
@@ -149,8 +211,8 @@ static void solve_all(void) {
     for (uint32_t idx = 0; idx < SIZEOF_1V1; idx++) {
         GameState g;
         if (!decode_1v1(idx, &g)) continue;
-        const MoveList *ml = game_get_valid_moves(&g);
-        if (ml->count == 0) {
+        MoveList ml = *game_get_valid_moves(&g);
+        if (ml.count == 0) {
             uint8_t winner = (g.current_player == PLAYER_WHITE) ? WLD_RAW_B_WIN : WLD_RAW_W_WIN;
             set_packed(s_db_1v1, idx, winner);
         }
@@ -165,17 +227,17 @@ static void solve_all(void) {
             if (get_packed(s_db_1v1, idx) != WLD_RAW_UNKNOWN) continue;
             GameState g;
             if (!decode_1v1(idx, &g)) continue;
-            const MoveList *ml = game_get_valid_moves(&g);
-            if (ml->count == 0) continue;
+            MoveList ml = *game_get_valid_moves(&g);
+            if (ml.count == 0) continue;
 
             bool can_win = false;
             bool all_lose = true;
             uint8_t my_win = (g.current_player == PLAYER_WHITE) ? WLD_RAW_W_WIN : WLD_RAW_B_WIN;
             uint8_t opp_win = (g.current_player == PLAYER_WHITE) ? WLD_RAW_B_WIN : WLD_RAW_W_WIN;
 
-            for (int i = 0; i < ml->count; i++) {
+            for (int i = 0; i < ml.count; i++) {
                 GameState next = g;
-                game_execute_move(&next, ml->moves[i]);
+                game_execute_move(&next, ml.moves[i]);
                 if (next.is_game_over) {
                     if (next.winner == g.current_player) { can_win = true; break; }
                 } else {
@@ -203,41 +265,160 @@ static void solve_all(void) {
         if (get_packed(s_db_1v1, idx) == WLD_RAW_UNKNOWN) set_packed(s_db_1v1, idx, WLD_RAW_DRAW);
     }
 
-    // 2. Solve 2v1 and 1v2
-    for (int w1 = 0; w1 < 32; w1++) {
-        for (int w2 = w1 + 1; w2 < 32; w2++) {
-            for (int wt1 = 0; wt1 < 2; wt1++) {
-                for (int wt2 = 0; wt2 < 2; wt2++) {
-                    for (int b = 0; b < 32; b++) {
-                        if (b == w1 || b == w2) continue;
-                        for (int bt = 0; bt < 2; bt++) {
-                            for (int turn = 0; turn < 2; turn++) {
-                                uint32_t idx = encode_2v1(w1, wt1, w2, wt2, b, bt, (Player)turn);
-                                set_packed(s_db_2v1, idx, WLD_RAW_W_WIN);
-                            }
-                        }
+    // 2. Solve 2v1 Retrograde
+    for (uint32_t idx = 0; idx < SIZEOF_2V1; idx++) {
+        GameState g;
+        if (!decode_2v1(idx, &g)) continue;
+        MoveList ml = *game_get_valid_moves(&g);
+        if (ml.count == 0) {
+            uint8_t winner = (g.current_player == PLAYER_WHITE) ? WLD_RAW_B_WIN : WLD_RAW_W_WIN;
+            set_packed(s_db_2v1, idx, winner);
+        }
+    }
+
+    changed = true;
+    while (changed) {
+        changed = false;
+        for (uint32_t idx = 0; idx < SIZEOF_2V1; idx++) {
+            if (get_packed(s_db_2v1, idx) != WLD_RAW_UNKNOWN) continue;
+            GameState g;
+            if (!decode_2v1(idx, &g)) continue;
+            MoveList ml = *game_get_valid_moves(&g);
+            if (ml.count == 0) continue;
+
+            uint8_t my_win = (g.current_player == PLAYER_WHITE) ? WLD_RAW_W_WIN : WLD_RAW_B_WIN;
+            uint8_t opp_win = (g.current_player == PLAYER_WHITE) ? WLD_RAW_B_WIN : WLD_RAW_W_WIN;
+
+            bool won = false;
+            int opp_wins_seen = 0;
+
+            for (int i = 0; i < ml.count; i++) {
+                GameState next = g;
+                game_execute_move(&next, ml.moves[i]);
+                if (next.is_game_over) {
+                    if (next.winner == g.current_player) { won = true; break; }
+                    else if (next.winner != g.current_player && !next.is_draw) { opp_wins_seen++; }
+                } else {
+                    int wm = __builtin_popcount(next.board.white_men) + __builtin_popcount(next.board.white_kings);
+                    int bm = __builtin_popcount(next.board.black_men) + __builtin_popcount(next.board.black_kings);
+                    if (bm == 0) { if (g.current_player == PLAYER_WHITE) { won = true; break; } else opp_wins_seen++; continue; }
+                    if (wm == 0) { if (g.current_player == PLAYER_BLACK) { won = true; break; } else opp_wins_seen++; continue; }
+
+                    uint8_t next_res = WLD_RAW_UNKNOWN;
+                    if (wm == 1 && bm == 1) {
+                        int n_w_sq = (next.board.white_men) ? __builtin_ctz(next.board.white_men) : __builtin_ctz(next.board.white_kings);
+                        int n_w_t = (next.board.white_kings) ? 1 : 0;
+                        int n_b_sq = (next.board.black_men) ? __builtin_ctz(next.board.black_men) : __builtin_ctz(next.board.black_kings);
+                        int n_b_t = (next.board.black_kings) ? 1 : 0;
+                        uint32_t n_1v1_idx = encode_1v1(n_w_sq, n_w_t, n_b_sq, n_b_t, next.current_player);
+                        next_res = get_packed(s_db_1v1, n_1v1_idx);
+                    } else if (wm == 2 && bm == 1) {
+                        int w_sqs[2], w_ts[2], cnt = 0;
+                        uint32_t temp_wm = next.board.white_men, temp_wk = next.board.white_kings;
+                        while (temp_wm) { int s = __builtin_ctz(temp_wm); temp_wm &= temp_wm - 1; w_sqs[cnt] = s; w_ts[cnt++] = 0; }
+                        while (temp_wk) { int s = __builtin_ctz(temp_wk); temp_wk &= temp_wk - 1; w_sqs[cnt] = s; w_ts[cnt++] = 1; }
+                        int n_b_sq = (next.board.black_men) ? __builtin_ctz(next.board.black_men) : __builtin_ctz(next.board.black_kings);
+                        int n_b_t = (next.board.black_kings) ? 1 : 0;
+                        uint32_t n_2v1_idx = encode_2v1(w_sqs[0], w_ts[0], w_sqs[1], w_ts[1], n_b_sq, n_b_t, next.current_player);
+                        next_res = get_packed(s_db_2v1, n_2v1_idx);
                     }
+
+                    if (next_res == my_win) { won = true; break; }
+                    else if (next_res == opp_win) { opp_wins_seen++; }
                 }
+            }
+
+            if (won) {
+                set_packed(s_db_2v1, idx, my_win);
+                changed = true;
+            } else if (opp_wins_seen == ml.count) {
+                set_packed(s_db_2v1, idx, opp_win);
+                changed = true;
             }
         }
     }
-    for (int b1 = 0; b1 < 32; b1++) {
-        for (int b2 = b1 + 1; b2 < 32; b2++) {
-            for (int bt1 = 0; bt1 < 2; bt1++) {
-                for (int bt2 = 0; bt2 < 2; bt2++) {
-                    for (int w = 0; w < 32; w++) {
-                        if (w == b1 || w == b2) continue;
-                        for (int wt = 0; wt < 2; wt++) {
-                            for (int turn = 0; turn < 2; turn++) {
-                                uint32_t idx = encode_1v2(w, wt, b1, bt1, b2, bt2, (Player)turn);
-                                set_packed(s_db_1v2, idx, WLD_RAW_B_WIN);
-                            }
-                        }
+    for (uint32_t idx = 0; idx < SIZEOF_2V1; idx++) {
+        if (get_packed(s_db_2v1, idx) == WLD_RAW_UNKNOWN) set_packed(s_db_2v1, idx, WLD_RAW_DRAW);
+    }
+
+    // 3. Solve 1v2 Retrograde
+    for (uint32_t idx = 0; idx < SIZEOF_1V2; idx++) {
+        GameState g;
+        if (!decode_1v2(idx, &g)) continue;
+        MoveList ml = *game_get_valid_moves(&g);
+        if (ml.count == 0) {
+            uint8_t winner = (g.current_player == PLAYER_WHITE) ? WLD_RAW_B_WIN : WLD_RAW_W_WIN;
+            set_packed(s_db_1v2, idx, winner);
+        }
+    }
+
+    changed = true;
+    while (changed) {
+        changed = false;
+        for (uint32_t idx = 0; idx < SIZEOF_1V2; idx++) {
+            if (get_packed(s_db_1v2, idx) != WLD_RAW_UNKNOWN) continue;
+            GameState g;
+            if (!decode_1v2(idx, &g)) continue;
+            MoveList ml = *game_get_valid_moves(&g);
+            if (ml.count == 0) continue;
+
+            uint8_t my_win = (g.current_player == PLAYER_WHITE) ? WLD_RAW_W_WIN : WLD_RAW_B_WIN;
+            uint8_t opp_win = (g.current_player == PLAYER_WHITE) ? WLD_RAW_B_WIN : WLD_RAW_W_WIN;
+
+            bool won = false;
+            int opp_wins_seen = 0;
+
+            for (int i = 0; i < ml.count; i++) {
+                GameState next = g;
+                game_execute_move(&next, ml.moves[i]);
+                if (next.is_game_over) {
+                    if (next.winner == g.current_player) { won = true; break; }
+                    else if (next.winner != g.current_player && !next.is_draw) { opp_wins_seen++; }
+                } else {
+                    int wm = __builtin_popcount(next.board.white_men) + __builtin_popcount(next.board.white_kings);
+                    int bm = __builtin_popcount(next.board.black_men) + __builtin_popcount(next.board.black_kings);
+                    if (bm == 0) { if (g.current_player == PLAYER_WHITE) { won = true; break; } else opp_wins_seen++; continue; }
+                    if (wm == 0) { if (g.current_player == PLAYER_BLACK) { won = true; break; } else opp_wins_seen++; continue; }
+
+                    uint8_t next_res = WLD_RAW_UNKNOWN;
+                    if (wm == 1 && bm == 1) {
+                        int n_w_sq = (next.board.white_men) ? __builtin_ctz(next.board.white_men) : __builtin_ctz(next.board.white_kings);
+                        int n_w_t = (next.board.white_kings) ? 1 : 0;
+                        int n_b_sq = (next.board.black_men) ? __builtin_ctz(next.board.black_men) : __builtin_ctz(next.board.black_kings);
+                        int n_b_t = (next.board.black_kings) ? 1 : 0;
+                        uint32_t n_1v1_idx = encode_1v1(n_w_sq, n_w_t, n_b_sq, n_b_t, next.current_player);
+                        next_res = get_packed(s_db_1v1, n_1v1_idx);
+                    } else if (wm == 1 && bm == 2) {
+                        int n_w_sq = (next.board.white_men) ? __builtin_ctz(next.board.white_men) : __builtin_ctz(next.board.white_kings);
+                        int n_w_t = (next.board.white_kings) ? 1 : 0;
+                        int b_sqs[2], b_ts[2], cnt = 0;
+                        uint32_t temp_bm = next.board.black_men, temp_bk = next.board.black_kings;
+                        while (temp_bm) { int s = __builtin_ctz(temp_bm); temp_bm &= temp_bm - 1; b_sqs[cnt] = s; b_ts[cnt++] = 0; }
+                        while (temp_bk) { int s = __builtin_ctz(temp_bk); temp_bk &= temp_bk - 1; b_sqs[cnt] = s; b_ts[cnt++] = 1; }
+                        uint32_t n_1v2_idx = encode_1v2(n_w_sq, n_w_t, b_sqs[0], b_ts[0], b_sqs[1], b_ts[1], next.current_player);
+                        next_res = get_packed(s_db_1v2, n_1v2_idx);
                     }
+
+                    if (next_res == my_win) { won = true; break; }
+                    else if (next_res == opp_win) { opp_wins_seen++; }
                 }
+            }
+
+            if (won) {
+                set_packed(s_db_1v2, idx, my_win);
+                changed = true;
+            } else if (opp_wins_seen == ml.count) {
+                set_packed(s_db_1v2, idx, opp_win);
+                changed = true;
             }
         }
     }
+    for (uint32_t idx = 0; idx < SIZEOF_1V2; idx++) {
+        if (get_packed(s_db_1v2, idx) == WLD_RAW_UNKNOWN) set_packed(s_db_1v2, idx, WLD_RAW_DRAW);
+    }
+
+
+
 
     // 3. Solve 2v2
     for (int w1 = 0; w1 < 32; w1++) {
@@ -515,11 +696,6 @@ WLDValue wld_db_probe(const GameState *game) {
         if (raw == WLD_RAW_DRAW) return WLD_DRAW;
     }
 
-    // 4 vs 1 / 1 vs 4
-    if (w_total >= 4 && b_total == 1) return WLD_WIN_WHITE;
-    if (w_total == 1 && b_total >= 4) return WLD_WIN_BLACK;
-    if (w_total >= 3 && b_total == 2) return WLD_WIN_WHITE;
-    if (w_total == 2 && b_total >= 3) return WLD_WIN_BLACK;
-
     return WLD_UNKNOWN;
 }
+

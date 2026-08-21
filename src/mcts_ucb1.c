@@ -17,6 +17,9 @@ ______________________________________________________________________________*/
 typedef struct {
     double   time_budget;
     float    exploration_alpha;
+    int      max_rollout_depth;
+    bool     use_db;
+    bool     debug_log;
     uint32_t root_idx;
     uint32_t rng_state;
     bool     has_prev_state;
@@ -73,6 +76,9 @@ void engine_mcts_ucb1_init(void **state) {
     memset(st, 0, sizeof(MCTSEngineState));
     st->time_budget = MCTS_DEFAULT_TIME_BUDGET;
     st->exploration_alpha = MCTS_DEFAULT_EXPLORATION;
+    st->max_rollout_depth = MCTS_MAX_ROLLOUT_DEPTH;
+    st->use_db = true;
+    st->debug_log = false;
     st->root_idx = UINT32_MAX;
     st->rng_state = (uint32_t)time(NULL) ^ 0x9E3779B9U;
     st->has_prev_state = false;
@@ -98,6 +104,25 @@ void engine_mcts_ucb1_set_exploration(void *state, float alpha) {
     }
 }
 
+void engine_mcts_ucb1_set_max_rollout_depth(void *state, int depth) {
+    if (state && depth > 0) {
+        ((MCTSEngineState*)state)->max_rollout_depth = depth;
+    }
+}
+
+void engine_mcts_ucb1_set_use_db(void *state, bool enable) {
+    if (state) {
+        ((MCTSEngineState*)state)->use_db = enable;
+    }
+}
+
+void engine_mcts_ucb1_set_debug_log(void *state, bool enable) {
+    if (state) {
+        ((MCTSEngineState*)state)->debug_log = enable;
+    }
+}
+
+
 uint32_t engine_mcts_ucb1_get_node_count(void) {
     return s_pool_tail;
 }
@@ -108,6 +133,7 @@ uint32_t engine_mcts_ucb1_get_root_visits(void *state) {
     if (st->root_idx == UINT32_MAX || st->root_idx >= s_pool_tail) return 0;
     return s_node_pool[st->root_idx].visits;
 }
+
 
 static bool boards_equal(const Board *a, const Board *b) {
     return (a->white_men == b->white_men) &&
@@ -162,6 +188,222 @@ static float evaluate_rollout_terminal(const GameState *sim_state, Player ai_pla
     }
 }
 
+static inline int sq_chebyshev_dist(int sq1, int sq2) {
+    int r1 = SQ_TO_ROW(sq1), c1 = SQ_TO_COL(sq1);
+    int r2 = SQ_TO_ROW(sq2), c2 = SQ_TO_COL(sq2);
+    int dr = abs(r1 - r2);
+    int dc = abs(c1 - c2);
+    return dr > dc ? dr : dc;
+}
+
+static inline int sq_manhattan_dist(int sq1, int sq2) {
+    int r1 = SQ_TO_ROW(sq1), c1 = SQ_TO_COL(sq1);
+    int r2 = SQ_TO_ROW(sq2), c2 = SQ_TO_COL(sq2);
+    return abs(r1 - r2) + abs(c1 - c2);
+}
+
+// Calculate pursuit distance to opponent's most important pieces (Kings first, then Men)
+static int calculate_enemy_pursuit_distance(int to_sq, const Board *board, Player ai_player) {
+    uint32_t enemy_kings = (ai_player == PLAYER_WHITE) ? board->black_kings : board->white_kings;
+    uint32_t enemy_men   = (ai_player == PLAYER_WHITE) ? board->black_men : board->white_men;
+
+    // 1. Priority to enemy Kings (Dama)
+    if (enemy_kings != 0) {
+        int min_d = 999;
+        uint32_t mask = enemy_kings;
+        while (mask) {
+            int sq = __builtin_ctz(mask);
+            mask &= mask - 1;
+            int d = sq_chebyshev_dist(to_sq, sq) * 10 + sq_manhattan_dist(to_sq, sq);
+            if (d < min_d) min_d = d;
+        }
+        return min_d;
+    }
+
+    // 2. If no enemy Kings, target enemy Men (Pawns)
+    if (enemy_men != 0) {
+        int min_d = 999;
+        uint32_t mask = enemy_men;
+        while (mask) {
+            int sq = __builtin_ctz(mask);
+            mask &= mask - 1;
+            int d = sq_chebyshev_dist(to_sq, sq) * 10 + sq_manhattan_dist(to_sq, sq);
+            if (d < min_d) min_d = d;
+        }
+        return min_d;
+    }
+
+    // 3. No enemy pieces remaining (immediate capture/win)
+    return 0;
+}
+
+typedef enum {
+    MOVE_EVAL_LOSS = 0,
+    MOVE_EVAL_DRAW = 1,
+    MOVE_EVAL_WIN  = 2
+} MoveOutcome;
+
+// Direct Endgame Database Move Selector (Bypasses random rollouts, optimizes target pursuit, avoids cycles)
+static Move mcts_select_database_move(const GameState *game, const MoveList *valid_moves, bool debug_log) {
+    Player ai_player = game->current_player;
+
+    Move best_win_move = MOVE_NONE;
+    int best_win_score = 99999; // Lower is better (closer distance + fewer repetitions)
+
+    Move best_draw_move = MOVE_NONE;
+    int best_draw_score = 99999;
+
+    Move best_loss_move = MOVE_NONE;
+    int best_loss_score = -99999;
+
+    if (debug_log) {
+        int w_cnt = __builtin_popcount(game->board.white_men) + __builtin_popcount(game->board.white_kings);
+        int b_cnt = __builtin_popcount(game->board.black_men) + __builtin_popcount(game->board.black_kings);
+        printf("\n================================================================================\n");
+        printf("[MCTS DEBUG LOG - DATABASE MODE]\n");
+        printf("Giocatore: %s | Pezzi in gioco: %d Bianco, %d Nero | Mosse candidate: %d\n",
+               (ai_player == PLAYER_WHITE) ? "BIANCO" : "NERO", w_cnt, b_cnt, valid_moves->count);
+        printf("Valutazione Tablebase WLD esatta con Minimax a 1-ply sulle risposte avversarie:\n");
+        printf("--------------------------------------------------------------------------------\n");
+        printf("  # | Mossa            | Esito WLD  | Dist. Target | Ripetizioni | Punteggio\n");
+        printf("--------------------------------------------------------------------------------\n");
+    }
+
+    for (int i = 0; i < valid_moves->count; i++) {
+        Move m = valid_moves->moves[i];
+        GameState test_state = *game;
+        game_execute_move(&test_state, m);
+
+        MoveOutcome outcome = MOVE_EVAL_LOSS;
+
+        if (test_state.is_game_over) {
+            if (test_state.is_draw) {
+                outcome = MOVE_EVAL_DRAW;
+            } else if (test_state.winner == ai_player) {
+                outcome = MOVE_EVAL_WIN;
+            } else {
+                outcome = MOVE_EVAL_LOSS;
+            }
+        } else {
+            // Minimax 1-ply lookahead: Verify that against ALL legal opponent responses, AI maintains the winning outcome
+            MoveList opp_moves = *game_get_valid_moves(&test_state);
+            if (opp_moves.count == 0) {
+                outcome = MOVE_EVAL_WIN;
+            } else {
+                MoveOutcome worst_for_ai = MOVE_EVAL_WIN;
+                for (int j = 0; j < opp_moves.count; j++) {
+                    GameState opp_state = test_state;
+                    game_execute_move(&opp_state, opp_moves.moves[j]);
+
+                    MoveOutcome res = MOVE_EVAL_LOSS;
+                    if (opp_state.is_game_over) {
+                        if (opp_state.is_draw) {
+                            res = MOVE_EVAL_DRAW;
+                        } else if (opp_state.winner == ai_player) {
+                            res = MOVE_EVAL_WIN;
+                        } else {
+                            res = MOVE_EVAL_LOSS;
+                        }
+                    } else {
+                        WLDValue wld = wld_db_probe(&opp_state);
+                        if (wld == WLD_WIN_WHITE) {
+                            res = (ai_player == PLAYER_WHITE) ? MOVE_EVAL_WIN : MOVE_EVAL_LOSS;
+                        } else if (wld == WLD_WIN_BLACK) {
+                            res = (ai_player == PLAYER_BLACK) ? MOVE_EVAL_WIN : MOVE_EVAL_LOSS;
+                        } else if (wld == WLD_DRAW) {
+                            res = MOVE_EVAL_DRAW;
+                        } else {
+                            res = MOVE_EVAL_DRAW;
+                        }
+
+                    }
+
+                    if (res < worst_for_ai) {
+                        worst_for_ai = res;
+                    }
+                    if (worst_for_ai == MOVE_EVAL_LOSS) {
+                        break; // Move refuted by opponent
+                    }
+                }
+                outcome = worst_for_ai;
+            }
+        }
+
+        int rep = game_get_repetition_count(&test_state);
+        // If reaching this state causes 3-fold repetition, it is a DRAW, not a WIN!
+        if (rep >= 3 && outcome == MOVE_EVAL_WIN) {
+            outcome = MOVE_EVAL_DRAW;
+        }
+
+        int to_sq = MOVE_TO(m);
+        int dist = calculate_enemy_pursuit_distance(to_sq, &test_state.board, ai_player);
+
+        // Captures directly reduce enemy pieces and make progress
+        if (MOVE_IS_CAP(m)) {
+            dist -= 50;
+        }
+
+        // Promotions make valuable kings
+        if (MOVE_IS_PROM(m)) {
+            dist -= 30;
+        }
+
+        // Repetition penalty to strictly avoid loops/cycles when winning
+        int rep_penalty = (rep >= 2) ? 200 : 0;
+        int win_score = dist + rep_penalty;
+        int draw_score = dist + (rep >= 3 ? 0 : 50);
+        int loss_score = dist;
+
+        if (debug_log) {
+            const char *out_str = (outcome == MOVE_EVAL_WIN) ? "WIN " : ((outcome == MOVE_EVAL_DRAW) ? "DRAW" : "LOSS");
+            int final_score = (outcome == MOVE_EVAL_WIN) ? win_score : ((outcome == MOVE_EVAL_DRAW) ? draw_score : loss_score);
+            printf(" %2d | %02d(r%d,c%d)->%02d(r%d,c%d) | %s       | dist: %3d      | rep: %d      | score: %5d\n",
+                   i + 1,
+                   MOVE_FROM(m), SQ_TO_ROW(MOVE_FROM(m)), SQ_TO_COL(MOVE_FROM(m)),
+                   MOVE_TO(m), SQ_TO_ROW(MOVE_TO(m)), SQ_TO_COL(MOVE_TO(m)),
+                   out_str, dist, rep, final_score);
+        }
+
+        if (outcome == MOVE_EVAL_WIN) {
+            if (move_is_none(best_win_move) || win_score < best_win_score) {
+                best_win_score = win_score;
+                best_win_move = m;
+            }
+        } else if (outcome == MOVE_EVAL_DRAW) {
+            if (move_is_none(best_draw_move) || draw_score < best_draw_score) {
+                best_draw_score = draw_score;
+                best_draw_move = m;
+            }
+        } else {
+            if (move_is_none(best_loss_move) || loss_score > best_loss_score) {
+                best_loss_score = loss_score;
+                best_loss_move = m;
+            }
+        }
+    }
+
+    Move chosen = valid_moves->moves[0];
+    if (!move_is_none(best_win_move)) {
+        chosen = best_win_move;
+    } else if (!move_is_none(best_draw_move)) {
+        chosen = best_draw_move;
+    } else if (!move_is_none(best_loss_move)) {
+        chosen = best_loss_move;
+    }
+
+    if (debug_log) {
+        printf("--------------------------------------------------------------------------------\n");
+        printf("Mossa selezionata da Database: %02d(r%d,c%d) -> %02d(r%d,c%d)\n",
+               MOVE_FROM(chosen), SQ_TO_ROW(MOVE_FROM(chosen)), SQ_TO_COL(MOVE_FROM(chosen)),
+               MOVE_TO(chosen), SQ_TO_ROW(MOVE_TO(chosen)), SQ_TO_COL(MOVE_TO(chosen)));
+        printf("================================================================================\n\n");
+        fflush(stdout);
+    }
+
+    return chosen;
+}
+
+
 static inline bool node_is_fully_expanded(uint32_t idx) {
     if (s_node_pool[idx].first_child_idx == UINT32_MAX) return false;
     return s_node_pool[idx].num_children > 0 &&
@@ -182,17 +424,37 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
         return MOVE_NONE;
     }
     if (root_valid_moves.count == 1) {
+        if (st->debug_log) {
+            Move fm = root_valid_moves.moves[0];
+            printf("\n[MCTS DEBUG] Giocatore: %s | Mossa unica forzata: %02d(r%d,c%d) -> %02d(r%d,c%d)\n\n",
+                   (ai_player == PLAYER_WHITE) ? "BIANCO" : "NERO",
+                   MOVE_FROM(fm), SQ_TO_ROW(MOVE_FROM(fm)), SQ_TO_COL(MOVE_FROM(fm)),
+                   MOVE_TO(fm), SQ_TO_ROW(MOVE_TO(fm)), SQ_TO_COL(MOVE_TO(fm)));
+            fflush(stdout);
+        }
         st->has_prev_state = true;
         st->prev_game_state = *game;
         st->prev_ai_move = root_valid_moves.moves[0];
         return root_valid_moves.moves[0];
     }
 
+    // Direct Database Mode: If enabled and board is within tablebase endgame range (<= 5 pieces), bypass random rollouts!
+    if (st->use_db && wld_db_is_endgame(&game->board)) {
+        Move db_move = mcts_select_database_move(game, &root_valid_moves, st->debug_log);
+        st->has_prev_state = true;
+        st->prev_game_state = *game;
+        st->prev_ai_move = db_move;
+        return db_move;
+    }
+
+
+
     // Safety threshold check: if pool is 80%+ full, reset to prevent overflow
     if (s_pool_tail >= MCTS_SAFETY_THRESHOLD_NODES) {
         pool_reset();
         st->root_idx = UINT32_MAX;
     }
+
 
     // Subtree Promotion (Tree Reuse)
     bool tree_reused = false;
@@ -349,13 +611,15 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
         // 3. SIMULATION (ROLLOUT)
         GameState rollout_state = curr_state;
         int rollout_depth = 0;
-        while (!rollout_state.is_game_over && rollout_depth < MCTS_MAX_ROLLOUT_DEPTH) {
-            if (wld_db_is_endgame(&rollout_state.board)) {
+        int max_depth = st->max_rollout_depth;
+        while (!rollout_state.is_game_over && rollout_depth < max_depth) {
+            if (st->use_db && wld_db_is_endgame(&rollout_state.board)) {
                 WLDValue wld = wld_db_probe(&rollout_state);
                 if (wld != WLD_UNKNOWN) {
                     break;
                 }
             }
+
             MoveList ml = *game_get_valid_moves(&rollout_state);
             if (ml.count == 0) {
                 rollout_state.is_game_over = true;
@@ -414,6 +678,48 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
 
     Move selected_move = (best_child != UINT32_MAX) ? s_node_pool[best_child].move : root_valid_moves.moves[0];
 
+    if (st->debug_log) {
+        double elapsed = mcts_get_time() - start_time;
+        printf("\n================================================================================\n");
+        printf("[MCTS DEBUG LOG - MONTE CARLO TREE SEARCH]\n");
+        printf("Giocatore: %s | Mosse legali: %d | Nodi pool allocati: %u / %d\n",
+               (ai_player == PLAYER_WHITE) ? "BIANCO" : "NERO", root_valid_moves.count, s_pool_tail, MCTS_MAX_NODES);
+        printf("Budget tempo: %.2fs | Tempo impiegato: %.3fs | Simulazioni totali: %u\n",
+               st->time_budget, elapsed, iterations);
+        printf("Parametri: Alpha = %.2f | Profondita Max Rollout = %d\n",
+               st->exploration_alpha, st->max_rollout_depth);
+        printf("--------------------------------------------------------------------------------\n");
+        printf("  # | Mossa            | Visite (N)     | Win Rate (w/N) | Punteggio / Q | Note\n");
+        printf("--------------------------------------------------------------------------------\n");
+
+        if (s_node_pool[st->root_idx].first_child_idx != UINT32_MAX) {
+            uint32_t fc = s_node_pool[st->root_idx].first_child_idx;
+            uint8_t nc = s_node_pool[st->root_idx].num_children;
+            uint32_t total_visits = s_node_pool[st->root_idx].visits;
+            for (uint8_t i = 0; i < nc; i++) {
+                uint32_t c_idx = fc + i;
+                Move cm = s_node_pool[c_idx].move;
+                uint32_t v = s_node_pool[c_idx].visits;
+                float q = (v > 0) ? (s_node_pool[c_idx].wins / (float)v) : 0.0f;
+                float pct = (total_visits > 0) ? ((float)v * 100.0f / (float)total_visits) : 0.0f;
+                const char *note = (c_idx == best_child) ? "[*SCELTA*]" : "";
+
+                printf(" %2d | %02d(r%d,c%d)->%02d(r%d,c%d) | %7u (%5.1f%%) | %6.1f%%        | %7.4f       | %s\n",
+                       i + 1,
+                       MOVE_FROM(cm), SQ_TO_ROW(MOVE_FROM(cm)), SQ_TO_COL(MOVE_FROM(cm)),
+                       MOVE_TO(cm), SQ_TO_ROW(MOVE_TO(cm)), SQ_TO_COL(MOVE_TO(cm)),
+                       v, pct, q * 100.0f, q, note);
+            }
+        }
+        printf("--------------------------------------------------------------------------------\n");
+        printf("Mossa scelta: %02d(r%d,c%d) -> %02d(r%d,c%d) (Visite: %u, WinRate: %.1f%%)\n",
+               MOVE_FROM(selected_move), SQ_TO_ROW(MOVE_FROM(selected_move)), SQ_TO_COL(MOVE_FROM(selected_move)),
+               MOVE_TO(selected_move), SQ_TO_ROW(MOVE_TO(selected_move)), SQ_TO_COL(MOVE_TO(selected_move)),
+               max_visits, max_q * 100.0f);
+        printf("================================================================================\n\n");
+        fflush(stdout);
+    }
+
     // Record for future subtree promotion
     st->has_prev_state = true;
     st->prev_game_state = *game;
@@ -421,3 +727,4 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
 
     return selected_move;
 }
+

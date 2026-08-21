@@ -97,9 +97,15 @@ int main(void) {
                 engine_destroy(&black_engine);
                 white_engine = engine_create(game.white_engine);
                 black_engine = engine_create(game.black_engine);
+                engine_apply_config(&white_engine, game.white_engine, &ui.engine_config);
+                engine_apply_config(&black_engine, game.black_engine, &ui.engine_config);
+            } else if (handled_by_ui && ui.state == UI_STATE_PLAYING && prev_state == UI_STATE_ENGINE_SETTINGS) {
+                engine_apply_config(&white_engine, game.white_engine, &ui.engine_config);
+                engine_apply_config(&black_engine, game.black_engine, &ui.engine_config);
             } else if (handled_by_ui && ui.state == UI_STATE_MAIN_MENU && prev_state == UI_STATE_PLAYING) {
                 camera_reset_menu_anim(&cam);
             }
+
             
             if (!piece_anim.active && !handled_by_ui && ui.state == UI_STATE_PLAYING && !game.is_game_over) {
                 // Determine if current player is Human

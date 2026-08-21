@@ -1242,3 +1242,10 @@ Move engine_checkerboard_get_move(void *state, const GameState *game) {
 void engine_checkerboard_cleanup(void *state) {
     if (state) free(state);
 }
+
+void engine_checkerboard_set_search_time(void *state, double seconds) {
+    if (state && seconds > 0.0) {
+        ((CheckerboardEngineState*)state)->search_time = seconds;
+    }
+}
+

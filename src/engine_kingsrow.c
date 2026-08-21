@@ -29,6 +29,7 @@ ______________________________________________________________________________*/
 
 typedef struct {
     bool is_connected;
+    double search_time;
 #ifdef _WIN32
     HANDLE h_process;
     HANDLE h_stdin_write;
@@ -41,6 +42,7 @@ typedef struct {
     FILE *stream_out;
 #endif
 } KingsrowEngineState;
+
 
 #ifndef _WIN32
 static bool read_line_with_timeout(int fd, char *buf, size_t max_len, int timeout_ms) {
@@ -295,6 +297,7 @@ bool engine_kingsrow_is_available(void) {
 void engine_kingsrow_init(void **state) {
     KingsrowEngineState *ks = (KingsrowEngineState*)calloc(1, sizeof(KingsrowEngineState));
     if (ks) {
+        ks->search_time = 1.0; // Default 1.0s search
         start_kingsrow_process(ks);
     }
     *state = ks;
@@ -312,7 +315,7 @@ Move engine_kingsrow_get_move(void *state, const GameState *game) {
     }
 
     int color = (game->current_player == PLAYER_WHITE) ? CB_WHITE : CB_BLACK;
-    double maxtime = 0.50; // High quality 500ms search
+    double maxtime = (ks->search_time > 0.0) ? ks->search_time : 1.0;
 
     // Convert Damascus bitboard to CheckerBoard format: b[col_x][row_y]
     int b[8][8];
@@ -437,3 +440,10 @@ void engine_kingsrow_cleanup(void *state) {
 #endif
     free(ks);
 }
+
+void engine_kingsrow_set_search_time(void *state, double seconds) {
+    if (state && seconds > 0.0) {
+        ((KingsrowEngineState*)state)->search_time = seconds;
+    }
+}
+

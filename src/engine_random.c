@@ -142,3 +142,39 @@ void engine_destroy(Engine *engine) {
         engine->internal_state = NULL;
     }
 }
+
+void engine_config_init_default(EngineConfig *cfg) {
+    if (!cfg) return;
+    cfg->mcts_time_budget = 3.0;
+    cfg->mcts_exploration = 1.41421356f;
+    cfg->mcts_max_rollout_depth = 70;
+    cfg->mcts_use_db = true;
+    cfg->mcts_debug_log = false;
+    cfg->cb_search_time = 1.0;
+    cfg->kr_search_time = 1.0;
+}
+
+void engine_apply_config(Engine *engine, EngineType type, const EngineConfig *cfg) {
+    if (!engine || !engine->internal_state || !cfg) return;
+
+    switch (type) {
+        case ENGINE_TYPE_MCTS_UCB1:
+            engine_mcts_ucb1_set_time_budget(engine->internal_state, cfg->mcts_time_budget);
+            engine_mcts_ucb1_set_exploration(engine->internal_state, cfg->mcts_exploration);
+            engine_mcts_ucb1_set_max_rollout_depth(engine->internal_state, cfg->mcts_max_rollout_depth);
+            engine_mcts_ucb1_set_use_db(engine->internal_state, cfg->mcts_use_db);
+            engine_mcts_ucb1_set_debug_log(engine->internal_state, cfg->mcts_debug_log);
+            break;
+        case ENGINE_TYPE_CHECKERBOARD:
+            engine_checkerboard_set_search_time(engine->internal_state, cfg->cb_search_time);
+            break;
+        case ENGINE_TYPE_KINGSROW:
+            engine_kingsrow_set_search_time(engine->internal_state, cfg->kr_search_time);
+            break;
+        case ENGINE_TYPE_RANDOM:
+        default:
+            break;
+    }
+}
+
+

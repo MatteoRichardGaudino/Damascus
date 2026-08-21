@@ -31,7 +31,8 @@ static inline bool wld_db_is_endgame(const Board *b) {
                 __builtin_popcount(b->white_kings) + 
                 __builtin_popcount(b->black_men) + 
                 __builtin_popcount(b->black_kings);
-    return count <= 5;
+    return count <= 4;
 }
+
 
 #endif // WLD_DB_H

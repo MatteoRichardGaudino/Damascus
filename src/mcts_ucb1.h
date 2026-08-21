@@ -30,7 +30,12 @@ void engine_mcts_ucb1_cleanup(void *state);
 // Configuration API
 void engine_mcts_ucb1_set_time_budget(void *state, double seconds);
 void engine_mcts_ucb1_set_exploration(void *state, float alpha);
+void engine_mcts_ucb1_set_max_rollout_depth(void *state, int depth);
+void engine_mcts_ucb1_set_use_db(void *state, bool enable);
+void engine_mcts_ucb1_set_debug_log(void *state, bool enable);
 uint32_t engine_mcts_ucb1_get_node_count(void);
 uint32_t engine_mcts_ucb1_get_root_visits(void *state);
 
+
 #endif // MCTS_UCB1_H
+
