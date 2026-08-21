@@ -27,7 +27,9 @@ typedef enum {
     ENGINE_TYPE_RANDOM = 0,
     ENGINE_TYPE_CHECKERBOARD = 1,
     ENGINE_TYPE_KINGSROW = 2,
-    ENGINE_TYPE_MCTS_UCB1 = 3
+    ENGINE_TYPE_MCTS_UCB1 = 3,
+    ENGINE_TYPE_MCTS_PUCT = 4,
+    ENGINE_TYPE_COUNT = 5
 } EngineType;
 
 // 128-bit Board representation

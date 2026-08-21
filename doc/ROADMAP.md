@@ -18,7 +18,7 @@ While the core board representation (128-bit bitboard), move generator (FID 4-ti
 | :--- | :--- | :--- |
 | **Pure C Implementation** | ✅ Compliant (C11) | Maintain C-only standard for all new modules. |
 | **Italian Draughts Rules (FID)** | ✅ Compliant | Fully validated (forced captures, quality priority). |
-| **MCTS Exploration Models** | ⚠️ Partial (UCB1 only) | **Mandatory**: Implement 2nd selection model (**PUCT**). |
+| **MCTS Exploration Models** | ✅ Compliant (UCB1 & PUCT) | Both UCB1 and PUCT models implemented & tested. |
 | **Thinking Time Profiles** | ⚠️ Partial (Custom list) | Align UI/CLI presets strictly to `0.2s`, `1.0s`, `3.0s`. |
 | **Zobrist Hashing / Transposition** | ❌ Missing | Implement 64-bit Zobrist hashing & Transposition Table. |
 | **Heuristic / Biased Rollouts** | ❌ Missing | Replace purely uniform random rollouts with tactical bias. |
@@ -33,7 +33,7 @@ While the core board representation (128-bit bitboard), move generator (FID 4-ti
 The following sections are organized in strict chronological order of execution.
 
 ```
-[Phase 1: PUCT Selection Model]
+[Phase 1: PUCT Selection Model] ✅ Completed
            ↓
 [Phase 2: Zobrist Hashing & Transposition Table]
            ↓
@@ -52,10 +52,10 @@ The following sections are organized in strict chronological order of execution.
 
 ## 3. Detailed Specifications by Phase
 
-### Phase 1: Second Selection Policy — PUCT (Predictor Upper Confidence Tree)
+### Phase 1: Second Selection Policy — PUCT (Predictor Upper Confidence Tree) ✅ COMPLETED
 
 The project specification mandates **at least two exploration/exploitation selection models**.  
-The second model will be **PUCT** (AlphaGo-style), incorporating prior move probabilities $P(s, a)$ computed from fast domain heuristics.
+The second model is **PUCT** (AlphaGo-style), incorporating prior move probabilities $P(s, a)$ computed from fast domain heuristics.
 
 #### 1.1 Mathematical Formulation
 For a node $s$ and child move $a$:
@@ -67,7 +67,7 @@ Where:
 - $N(s, a)$: Visit count of child $a$.
 - $c_{\text{puct}}$: Exploration constant (tunable parameter, default $\approx 1.5$).
 - $P(s, a)$: Prior policy probability normalized across legal moves:
-  $$P(s, a) = \frac{\exp(H(s, a) / \tau)}{\sum_{b} \exp(H(s, b) / \tau)}$$
+  $$P(s, a) = \frac{\exp((H(s, a) - \max_b H(s, b)) / \tau)}{\sum_{b} \exp((H(s, b) - \max_c H(s, c)) / \tau)}$$
 - $H(s, a)$: Lightweight domain heuristic score for move $a$:
   - King capture: $+3.0$
   - Man capture: $+1.5$
@@ -77,9 +77,10 @@ Where:
   - Moving away from base back-rank defense: $-0.3$
 
 #### 1.2 Architecture & Files
-- Create `src/mcts_puct.h` and `src/mcts_puct.c` (or unify into `src/mcts.c` with selectable policy enum `MCTS_POLICY_UCB1` vs `MCTS_POLICY_PUCT`).
-- Extend `EngineType` enum in `src/game.h` to include `ENGINE_TYPE_MCTS_PUCT`.
-- Register PUCT engine in `src/engine.h` and `src/engine_random.c`.
+- Implemented in `src/mcts_puct.h`, `src/engine_mcts_puct.h`, and `src/mcts_puct.c`.
+- Extended `EngineType` enum in `src/game.h` to include `ENGINE_TYPE_MCTS_PUCT` (value 4, `ENGINE_TYPE_COUNT = 5`).
+- Registered PUCT engine in `src/engine.h`, `src/engine_random.c`, and `src/ui.c`.
+- Added interactive PUCT configuration tab in settings UI ($c_{\text{puct}}$, $\tau$, time budget, rollout depth, WLD tablebase, console debug log).
 
 ---
 

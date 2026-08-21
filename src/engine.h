@@ -18,6 +18,14 @@ typedef struct {
     bool   mcts_use_db;            // Enable/disable instant WLD tablebase mode (true/false)
     bool   mcts_debug_log;         // Enable/disable verbose console debug logging for MCTS
 
+    // MCTS PUCT parameters
+    double puct_time_budget;       // Seconds (e.g. 0.2, 1.0, 3.0)
+    float  puct_c_puct;            // Exploration constant c_puct (e.g. 1.5)
+    float  puct_temperature;       // Softmax temperature tau (e.g. 1.0)
+    int    puct_max_rollout_depth; // Max simulation depth (e.g. 20, 70, 150)
+    bool   puct_use_db;            // Enable/disable instant WLD tablebase mode (true/false)
+    bool   puct_debug_log;         // Enable/disable verbose console debug logging for PUCT
+
     // CheckerBoard parameters
     double cb_search_time;         // Search time in seconds (e.g. 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0)
 

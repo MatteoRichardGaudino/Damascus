@@ -3,6 +3,7 @@
 #include "engine_checkerboard.h"
 #include "engine_kingsrow.h"
 #include "mcts_ucb1.h"
+#include "mcts_puct.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -82,6 +83,8 @@ bool engine_is_type_available(EngineType type) {
             return engine_kingsrow_is_available();
         case ENGINE_TYPE_MCTS_UCB1:
             return true;
+        case ENGINE_TYPE_MCTS_PUCT:
+            return true;
         default:
             return false;
     }
@@ -97,6 +100,8 @@ const char *engine_get_type_name(EngineType type) {
             return "Kingsrow";
         case ENGINE_TYPE_MCTS_UCB1:
             return "MCTS_UCB1";
+        case ENGINE_TYPE_MCTS_PUCT:
+            return "MCTS_PUCT";
         default:
             return "Unknown";
     }
@@ -121,6 +126,11 @@ Engine engine_create(EngineType type) {
             eng.init = engine_mcts_ucb1_init;
             eng.get_move = engine_mcts_ucb1_get_move;
             eng.cleanup = engine_mcts_ucb1_cleanup;
+            break;
+        case ENGINE_TYPE_MCTS_PUCT:
+            eng.init = engine_mcts_puct_init;
+            eng.get_move = engine_mcts_puct_get_move;
+            eng.cleanup = engine_mcts_puct_cleanup;
             break;
         case ENGINE_TYPE_RANDOM:
         default:
@@ -150,6 +160,12 @@ void engine_config_init_default(EngineConfig *cfg) {
     cfg->mcts_max_rollout_depth = 70;
     cfg->mcts_use_db = true;
     cfg->mcts_debug_log = false;
+    cfg->puct_time_budget = 3.0;
+    cfg->puct_c_puct = 1.5f;
+    cfg->puct_temperature = 1.0f;
+    cfg->puct_max_rollout_depth = 70;
+    cfg->puct_use_db = true;
+    cfg->puct_debug_log = false;
     cfg->cb_search_time = 1.0;
     cfg->kr_search_time = 1.0;
 }
@@ -164,6 +180,14 @@ void engine_apply_config(Engine *engine, EngineType type, const EngineConfig *cf
             engine_mcts_ucb1_set_max_rollout_depth(engine->internal_state, cfg->mcts_max_rollout_depth);
             engine_mcts_ucb1_set_use_db(engine->internal_state, cfg->mcts_use_db);
             engine_mcts_ucb1_set_debug_log(engine->internal_state, cfg->mcts_debug_log);
+            break;
+        case ENGINE_TYPE_MCTS_PUCT:
+            engine_mcts_puct_set_time_budget(engine->internal_state, cfg->puct_time_budget);
+            engine_mcts_puct_set_c_puct(engine->internal_state, cfg->puct_c_puct);
+            engine_mcts_puct_set_temperature(engine->internal_state, cfg->puct_temperature);
+            engine_mcts_puct_set_max_rollout_depth(engine->internal_state, cfg->puct_max_rollout_depth);
+            engine_mcts_puct_set_use_db(engine->internal_state, cfg->puct_use_db);
+            engine_mcts_puct_set_debug_log(engine->internal_state, cfg->puct_debug_log);
             break;
         case ENGINE_TYPE_CHECKERBOARD:
             engine_checkerboard_set_search_time(engine->internal_state, cfg->cb_search_time);
