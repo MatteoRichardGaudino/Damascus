@@ -3,6 +3,7 @@
 
 #include "engine.h"
 #include "transposition.h"
+#include "mcts_heuristic.h"
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -23,6 +24,8 @@ typedef struct {
     Move     move;            // Mossa eseguita per raggiungere questo stato (from, to, flag)
     uint8_t  num_children;    // Numero totale di mosse legali generate
     uint8_t  unexpanded_idx;  // Quanti figli sono già stati espansi/simulati
+    uint8_t  proof_status;    // MCTSProofStatus (UNKNOWN, WIN, LOSS, DRAW)
+    uint8_t  proof_depth;     // Distanza in ply alla conclusione certa / mate
 } MCTSNode;
 
 // Engine Lifecycle & Move API
@@ -36,6 +39,9 @@ void engine_mcts_ucb1_set_exploration(void *state, float alpha);
 void engine_mcts_ucb1_set_max_rollout_depth(void *state, int depth);
 void engine_mcts_ucb1_set_rollout_epsilon(void *state, float epsilon);
 void engine_mcts_ucb1_set_use_db(void *state, bool enable);
+void engine_mcts_ucb1_set_use_book(void *state, bool enable);
+void engine_mcts_ucb1_set_book_mode(void *state, BookPlayMode mode);
+void engine_mcts_ucb1_set_book_temperature(void *state, float tau);
 void engine_mcts_ucb1_set_debug_log(void *state, bool enable);
 uint32_t engine_mcts_ucb1_get_node_count(void);
 uint32_t engine_mcts_ucb1_get_root_visits(void *state);

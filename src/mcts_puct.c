@@ -6,7 +6,9 @@ ______________________________________________________________________________*/
 
 #include "mcts_puct.h"
 #include "mcts_heuristic.h"
+#include "opening_book.h"
 #include "wld_db.h"
+#include "wld_solver.h"
 #include "zobrist.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +25,9 @@ typedef struct {
     int                max_rollout_depth;
     float              rollout_epsilon;
     bool               use_db;
+    bool               use_book;
+    BookPlayMode       book_mode;
+    float              book_temperature;
     bool               debug_log;
     uint32_t           root_idx;
     uint32_t           rng_state;
@@ -37,11 +42,21 @@ typedef struct {
 static _Thread_local PUCTNode *s_node_pool = NULL;
 static _Thread_local uint32_t s_pool_tail = 0;
 
+#ifdef _WIN32
+#include <windows.h>
+static inline double puct_get_time(void) {
+    LARGE_INTEGER freq, counter;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&counter);
+    return (double)counter.QuadPart / (double)freq.QuadPart;
+}
+#else
 static inline double puct_get_time(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
 }
+#endif
 
 static inline uint32_t xorshift32(uint32_t *state) {
     uint32_t x = *state;
@@ -78,6 +93,8 @@ static uint32_t create_root_node(uint64_t hash) {
     s_node_pool[idx].move = MOVE_NONE;
     s_node_pool[idx].num_children = 0;
     s_node_pool[idx].unexpanded_idx = 0;
+    s_node_pool[idx].proof_status = MCTS_PROOF_UNKNOWN;
+    s_node_pool[idx].proof_depth = 0;
     return idx;
 }
 
@@ -87,7 +104,8 @@ float puct_compute_heuristic(const GameState *state, Move move) {
 }
 
 // Compute Softmax Prior Policy P(s, a) = exp(H(s, a) / tau) / sum(exp(H(s, b) / tau))
-static void compute_priors(const GameState *state, const MoveList *moves, float tau, float *priors) {
+// Blended with opening book distribution P_book(s, a) when use_book is active
+static void compute_priors(const GameState *state, const MoveList *moves, float tau, bool use_book, float *priors) {
     if (moves->count == 0) return;
     if (moves->count == 1) {
         priors[0] = 1.0f;
@@ -117,10 +135,41 @@ static void compute_priors(const GameState *state, const MoveList *moves, float 
     for (int i = 0; i < moves->count; i++) {
         priors[i] *= inv_sum;
     }
+
+    // Blend opening book distribution P_book(s, a) if book is enabled and state has entries
+    if (use_book) {
+        BookMoveList book_moves;
+        if (opening_book_probe(state, &book_moves) && book_moves.count > 0) {
+            const float lambda_book = 0.75f; // AlphaGo style blending parameter
+            float blended[48];
+            float sum_blended = 0.0f;
+
+            for (int i = 0; i < moves->count; i++) {
+                Move m = moves->moves[i];
+                float p_book = 0.0f;
+                for (int b = 0; b < book_moves.count; b++) {
+                    if (move_equals(m, book_moves.entries[b].move)) {
+                        p_book = book_moves.entries[b].prior_weight;
+                        break;
+                    }
+                }
+                blended[i] = (1.0f - lambda_book) * priors[i] + lambda_book * p_book;
+                sum_blended += blended[i];
+            }
+
+            if (sum_blended > 0.0f) {
+                float inv_blended = 1.0f / sum_blended;
+                for (int i = 0; i < moves->count; i++) {
+                    priors[i] = blended[i] * inv_blended;
+                }
+            }
+        }
+    }
 }
 
 void engine_mcts_puct_init(void **state) {
     wld_db_init();
+    opening_book_init(BOOK_BACKEND_KINGSROW_ODB, NULL);
     zobrist_init();
     PUCTEngineState *st = (PUCTEngineState*)malloc(sizeof(PUCTEngineState));
     if (!st) {
@@ -134,6 +183,9 @@ void engine_mcts_puct_init(void **state) {
     st->max_rollout_depth = PUCT_MAX_ROLLOUT_DEPTH;
     st->rollout_epsilon = PUCT_DEFAULT_ROLLOUT_EPSILON;
     st->use_db = true;
+    st->use_book = true;
+    st->book_mode = BOOK_MODE_PUCT_GUIDED;
+    st->book_temperature = 1.0f;
     st->debug_log = false;
     st->root_idx = UINT32_MAX;
     st->rng_state = (uint32_t)time(NULL) ^ 0xA55AA55AU;
@@ -188,6 +240,24 @@ void engine_mcts_puct_set_use_db(void *state, bool enable) {
     }
 }
 
+void engine_mcts_puct_set_use_book(void *state, bool enable) {
+    if (state) {
+        ((PUCTEngineState*)state)->use_book = enable;
+    }
+}
+
+void engine_mcts_puct_set_book_mode(void *state, BookPlayMode mode) {
+    if (state) {
+        ((PUCTEngineState*)state)->book_mode = mode;
+    }
+}
+
+void engine_mcts_puct_set_book_temperature(void *state, float tau) {
+    if (state && tau > 0.0f) {
+        ((PUCTEngineState*)state)->book_temperature = tau;
+    }
+}
+
 void engine_mcts_puct_set_debug_log(void *state, bool enable) {
     if (state) {
         ((PUCTEngineState*)state)->debug_log = enable;
@@ -212,26 +282,26 @@ static bool boards_equal(const Board *a, const Board *b) {
            (a->black_kings == b->black_kings);
 }
 
-// Rollout evaluation cutoff with WLD tablebase integration
-static float evaluate_rollout_terminal(const GameState *sim_state, Player ai_player) {
+// Rollout evaluation cutoff with WLD tablebase integration and depth discounting
+static float evaluate_rollout_terminal(const GameState *sim_state, Player ai_player, int total_depth) {
     if (sim_state->is_game_over) {
-        if (sim_state->is_draw) {
-            return 0.5f; // Draw
-        }
-        if (sim_state->winner == ai_player) {
-            return 1.0f; // Win
-        } else {
-            return 0.0f; // Loss
-        }
+        return mcts_compute_depth_discounted_reward(
+            !sim_state->is_draw && (sim_state->winner == ai_player),
+            !sim_state->is_draw && (sim_state->winner != ai_player),
+            sim_state->is_draw,
+            total_depth
+        );
     }
 
-    // Exact Endgame Tablebase Probe (<= 5 pieces)
+    // Exact Endgame Tablebase Probe (<= 5/8 pieces)
     if (wld_db_is_endgame(&sim_state->board)) {
         WLDValue wld = wld_db_probe(sim_state);
         if (wld == WLD_WIN_WHITE) {
-            return (ai_player == PLAYER_WHITE) ? 1.0f : 0.0f;
+            bool ai_wins = (ai_player == PLAYER_WHITE);
+            return mcts_compute_depth_discounted_reward(ai_wins, !ai_wins, false, total_depth);
         } else if (wld == WLD_WIN_BLACK) {
-            return (ai_player == PLAYER_BLACK) ? 1.0f : 0.0f;
+            bool ai_wins = (ai_player == PLAYER_BLACK);
+            return mcts_compute_depth_discounted_reward(ai_wins, !ai_wins, false, total_depth);
         } else if (wld == WLD_DRAW) {
             return 0.5f;
         }
@@ -250,219 +320,99 @@ static float evaluate_rollout_terminal(const GameState *sim_state, Player ai_pla
         return 0.5f; // Draw
     }
 
-    if (ai_player == PLAYER_WHITE) {
-        return (w_score > b_score) ? 1.0f : 0.0f;
-    } else {
-        return (b_score > w_score) ? 1.0f : 0.0f;
-    }
+    bool ai_winning = (ai_player == PLAYER_WHITE) ? (w_score > b_score) : (b_score > w_score);
+    return mcts_compute_depth_discounted_reward(ai_winning, !ai_winning, false, total_depth);
 }
 
-static inline int sq_chebyshev_dist(int sq1, int sq2) {
-    int r1 = SQ_TO_ROW(sq1), c1 = SQ_TO_COL(sq1);
-    int r2 = SQ_TO_ROW(sq2), c2 = SQ_TO_COL(sq2);
-    int dr = abs(r1 - r2);
-    int dc = abs(c1 - c2);
-    return dr > dc ? dr : dc;
-}
+// Initialize node game-theoretic proof status from terminal state or tablebase probe
+static inline void mcts_init_puct_node_proof(PUCTNode *node, const GameState *state, bool use_db) {
+    node->proof_status = MCTS_PROOF_UNKNOWN;
+    node->proof_depth = 0;
 
-static inline int sq_manhattan_dist(int sq1, int sq2) {
-    int r1 = SQ_TO_ROW(sq1), c1 = SQ_TO_COL(sq1);
-    int r2 = SQ_TO_ROW(sq2), c2 = SQ_TO_COL(sq2);
-    return abs(r1 - r2) + abs(c1 - c2);
-}
-
-static int calculate_enemy_pursuit_distance(int to_sq, const Board *board, Player ai_player) {
-    uint32_t enemy_kings = (ai_player == PLAYER_WHITE) ? board->black_kings : board->white_kings;
-    uint32_t enemy_men   = (ai_player == PLAYER_WHITE) ? board->black_men : board->white_men;
-
-    if (enemy_kings != 0) {
-        int min_d = 999;
-        uint32_t mask = enemy_kings;
-        while (mask) {
-            int sq = __builtin_ctz(mask);
-            mask &= mask - 1;
-            int d = sq_chebyshev_dist(to_sq, sq) * 10 + sq_manhattan_dist(to_sq, sq);
-            if (d < min_d) min_d = d;
-        }
-        return min_d;
-    }
-
-    if (enemy_men != 0) {
-        int min_d = 999;
-        uint32_t mask = enemy_men;
-        while (mask) {
-            int sq = __builtin_ctz(mask);
-            mask &= mask - 1;
-            int d = sq_chebyshev_dist(to_sq, sq) * 10 + sq_manhattan_dist(to_sq, sq);
-            if (d < min_d) min_d = d;
-        }
-        return min_d;
-    }
-
-    return 0;
-}
-
-typedef enum {
-    MOVE_EVAL_LOSS = 0,
-    MOVE_EVAL_DRAW = 1,
-    MOVE_EVAL_WIN  = 2
-} MoveOutcome;
-
-// Direct Endgame Database Move Selector (Bypasses rollouts in endgame)
-static Move puct_select_database_move(const GameState *game, const MoveList *valid_moves, bool debug_log) {
-    Player ai_player = game->current_player;
-
-    Move best_win_move = MOVE_NONE;
-    int best_win_score = 99999;
-
-    Move best_draw_move = MOVE_NONE;
-    int best_draw_score = 99999;
-
-    Move best_loss_move = MOVE_NONE;
-    int best_loss_score = -99999;
-
-    if (debug_log) {
-        int w_cnt = __builtin_popcount(game->board.white_men) + __builtin_popcount(game->board.white_kings);
-        int b_cnt = __builtin_popcount(game->board.black_men) + __builtin_popcount(game->board.black_kings);
-        printf("\n================================================================================\n");
-        printf("[MCTS PUCT DEBUG LOG - DATABASE MODE]\n");
-        printf("Giocatore: %s | Pezzi in gioco: %d Bianco, %d Nero | Mosse candidate: %d\n",
-               (ai_player == PLAYER_WHITE) ? "BIANCO" : "NERO", w_cnt, b_cnt, valid_moves->count);
-        printf("Valutazione Tablebase WLD esatta con Minimax a 1-ply sulle risposte avversarie:\n");
-        printf("--------------------------------------------------------------------------------\n");
-        printf("  # | Mossa            | Esito WLD  | Dist. Target | Ripetizioni | Punteggio\n");
-        printf("--------------------------------------------------------------------------------\n");
-    }
-
-    for (int i = 0; i < valid_moves->count; i++) {
-        Move m = valid_moves->moves[i];
-        GameState test_state = *game;
-        game_execute_move(&test_state, m);
-
-        MoveOutcome outcome = MOVE_EVAL_LOSS;
-
-        if (test_state.is_game_over) {
-            if (test_state.is_draw) {
-                outcome = MOVE_EVAL_DRAW;
-            } else if (test_state.winner == ai_player) {
-                outcome = MOVE_EVAL_WIN;
-            } else {
-                outcome = MOVE_EVAL_LOSS;
-            }
+    if (state->is_game_over) {
+        if (state->is_draw) {
+            node->proof_status = MCTS_PROOF_DRAW;
+            node->proof_depth = 0;
         } else {
-            MoveList opp_moves = *game_get_valid_moves(&test_state);
-            if (opp_moves.count == 0) {
-                outcome = MOVE_EVAL_WIN;
-            } else {
-                MoveOutcome worst_for_ai = MOVE_EVAL_WIN;
-                for (int j = 0; j < opp_moves.count; j++) {
-                    GameState opp_state = test_state;
-                    game_execute_move(&opp_state, opp_moves.moves[j]);
-
-                    MoveOutcome res = MOVE_EVAL_LOSS;
-                    if (opp_state.is_game_over) {
-                        if (opp_state.is_draw) {
-                            res = MOVE_EVAL_DRAW;
-                        } else if (opp_state.winner == ai_player) {
-                            res = MOVE_EVAL_WIN;
-                        } else {
-                            res = MOVE_EVAL_LOSS;
-                        }
-                    } else {
-                        WLDValue wld = wld_db_probe(&opp_state);
-                        if (wld == WLD_WIN_WHITE) {
-                            res = (ai_player == PLAYER_WHITE) ? MOVE_EVAL_WIN : MOVE_EVAL_LOSS;
-                        } else if (wld == WLD_WIN_BLACK) {
-                            res = (ai_player == PLAYER_BLACK) ? MOVE_EVAL_WIN : MOVE_EVAL_LOSS;
-                        } else if (wld == WLD_DRAW) {
-                            res = MOVE_EVAL_DRAW;
-                        } else {
-                            res = MOVE_EVAL_DRAW;
-                        }
-                    }
-
-                    if (res < worst_for_ai) {
-                        worst_for_ai = res;
-                    }
-                    if (worst_for_ai == MOVE_EVAL_LOSS) {
-                        break;
-                    }
-                }
-                outcome = worst_for_ai;
-            }
+            node->proof_status = (state->winner == state->current_player) ? MCTS_PROOF_WIN : MCTS_PROOF_LOSS;
+            node->proof_depth = 0;
         }
-
-        int rep = game_get_repetition_count(&test_state);
-        if (rep >= 3 && outcome == MOVE_EVAL_WIN) {
-            outcome = MOVE_EVAL_DRAW;
-        }
-
-        int to_sq = MOVE_TO(m);
-        int dist = calculate_enemy_pursuit_distance(to_sq, &test_state.board, ai_player);
-
-        if (MOVE_IS_CAP(m)) {
-            dist -= 50;
-        }
-        if (MOVE_IS_PROM(m)) {
-            dist -= 30;
-        }
-
-        int rep_penalty = (rep >= 2) ? 200 : 0;
-        int win_score = dist + rep_penalty;
-        int draw_score = dist + (rep >= 3 ? 0 : 50);
-        int loss_score = dist;
-
-        if (debug_log) {
-            const char *out_str = (outcome == MOVE_EVAL_WIN) ? "WIN " : ((outcome == MOVE_EVAL_DRAW) ? "DRAW" : "LOSS");
-            int final_score = (outcome == MOVE_EVAL_WIN) ? win_score : ((outcome == MOVE_EVAL_DRAW) ? draw_score : loss_score);
-            printf(" %2d | %02d(r%d,c%d)->%02d(r%d,c%d) | %s       | dist: %3d      | rep: %d      | score: %5d\n",
-                   i + 1,
-                   MOVE_FROM(m), SQ_TO_ROW(MOVE_FROM(m)), SQ_TO_COL(MOVE_FROM(m)),
-                   MOVE_TO(m), SQ_TO_ROW(MOVE_TO(m)), SQ_TO_COL(MOVE_TO(m)),
-                   out_str, dist, rep, final_score);
-        }
-
-        if (outcome == MOVE_EVAL_WIN) {
-            if (move_is_none(best_win_move) || win_score < best_win_score) {
-                best_win_score = win_score;
-                best_win_move = m;
-            }
-        } else if (outcome == MOVE_EVAL_DRAW) {
-            if (move_is_none(best_draw_move) || draw_score < best_draw_score) {
-                best_draw_score = draw_score;
-                best_draw_move = m;
-            }
-        } else {
-            if (move_is_none(best_loss_move) || loss_score > best_loss_score) {
-                best_loss_score = loss_score;
-                best_loss_move = m;
-            }
-        }
+        return;
     }
 
-    Move chosen = valid_moves->moves[0];
-    if (!move_is_none(best_win_move)) {
-        chosen = best_win_move;
-    } else if (!move_is_none(best_draw_move)) {
-        chosen = best_draw_move;
-    } else if (!move_is_none(best_loss_move)) {
-        chosen = best_loss_move;
+    if (use_db && wld_db_is_endgame(&state->board)) {
+        WLDValue wld = wld_db_probe(state);
+        if (wld == WLD_WIN_WHITE) {
+            node->proof_status = (state->current_player == PLAYER_WHITE) ? MCTS_PROOF_WIN : MCTS_PROOF_LOSS;
+            node->proof_depth = 1;
+        } else if (wld == WLD_WIN_BLACK) {
+            node->proof_status = (state->current_player == PLAYER_BLACK) ? MCTS_PROOF_WIN : MCTS_PROOF_LOSS;
+            node->proof_depth = 1;
+        } else if (wld == WLD_DRAW) {
+            node->proof_status = MCTS_PROOF_DRAW;
+            node->proof_depth = 1;
+        }
     }
-
-    if (debug_log) {
-        printf("--------------------------------------------------------------------------------\n");
-        printf("Mossa selezionata da Database: %02d(r%d,c%d) -> %02d(r%d,c%d)\n",
-               MOVE_FROM(chosen), SQ_TO_ROW(MOVE_FROM(chosen)), SQ_TO_COL(MOVE_FROM(chosen)),
-               MOVE_TO(chosen), SQ_TO_ROW(MOVE_TO(chosen)), SQ_TO_COL(MOVE_TO(chosen)));
-        printf("================================================================================\n\n");
-        fflush(stdout);
-    }
-
-    return chosen;
 }
 
-// Select best child using PUCT formula:
-// PUCT(s, a) = Q(s, a) + c_puct * P(s, a) * [ sqrt(sum_b N(s, b)) / (1 + N(s, a)) ]
+// Update proof status of node based on child proof states (MCTS-Solver propagation)
+static inline void mcts_update_puct_proof_status(uint32_t node_idx) {
+    if (s_node_pool[node_idx].first_child_idx == UINT32_MAX) return;
+    uint8_t nc = s_node_pool[node_idx].num_children;
+    if (nc == 0) {
+        s_node_pool[node_idx].proof_status = MCTS_PROOF_LOSS;
+        s_node_pool[node_idx].proof_depth = 0;
+        return;
+    }
+
+    uint32_t fc = s_node_pool[node_idx].first_child_idx;
+    bool has_loss_child = false;
+    uint8_t min_loss_depth = 255;
+    bool all_win_children = true;
+    uint8_t max_win_depth = 0;
+    bool all_proven = true;
+    uint8_t min_draw_depth = 255;
+
+    for (uint8_t i = 0; i < nc; i++) {
+        uint32_t c_idx = fc + i;
+        uint8_t st = s_node_pool[c_idx].proof_status;
+        uint8_t d = s_node_pool[c_idx].proof_depth;
+
+        if (st == MCTS_PROOF_LOSS) {
+            has_loss_child = true;
+            if (d < min_loss_depth) min_loss_depth = d;
+        }
+        if (st != MCTS_PROOF_WIN) {
+            all_win_children = false;
+        } else {
+            if (d > max_win_depth) max_win_depth = d;
+        }
+        if (st == MCTS_PROOF_UNKNOWN) {
+            all_proven = false;
+        }
+        if (st == MCTS_PROOF_DRAW) {
+            if (d < min_draw_depth) min_draw_depth = d;
+        }
+    }
+
+    if (has_loss_child) {
+        s_node_pool[node_idx].proof_status = MCTS_PROOF_WIN;
+        s_node_pool[node_idx].proof_depth = (min_loss_depth < 254) ? (min_loss_depth + 1) : 255;
+    } else if (all_win_children) {
+        s_node_pool[node_idx].proof_status = MCTS_PROOF_LOSS;
+        s_node_pool[node_idx].proof_depth = (max_win_depth < 254) ? (max_win_depth + 1) : 255;
+    } else if (all_proven) {
+        s_node_pool[node_idx].proof_status = MCTS_PROOF_DRAW;
+        s_node_pool[node_idx].proof_depth = (min_draw_depth < 254) ? (min_draw_depth + 1) : 255;
+    }
+}
+
+// Direct Endgame Database Move Selector via WLD Shortest-Win Mini-Solver
+static Move puct_select_database_move(const GameState *game, bool debug_log) {
+    return wld_solver_select_move(game, WLD_SOLVER_DEFAULT_DEPTH, debug_log);
+}
+
+// Select best child using PUCT formula with proof-number awareness:
 static uint32_t puct_select_child(uint32_t parent_idx, float c_puct) {
     uint32_t fc = s_node_pool[parent_idx].first_child_idx;
     uint8_t nc = s_node_pool[parent_idx].num_children;
@@ -480,11 +430,22 @@ static uint32_t puct_select_child(uint32_t parent_idx, float c_puct) {
 
     for (uint8_t i = 0; i < nc; i++) {
         uint32_t c_idx = fc + i;
-        uint32_t n = s_node_pool[c_idx].visits;
-        float q = (n > 0) ? (s_node_pool[c_idx].wins / (float)n) : 0.0f;
-        float p = s_node_pool[c_idx].prior;
-        float u = c_puct * p * (sqrt_sum / (1.0f + (float)n));
-        float val = q + u;
+        uint8_t c_proof = s_node_pool[c_idx].proof_status;
+        float val;
+
+        if (c_proof == MCTS_PROOF_LOSS) {
+            // Child is proven loss for opponent -> proven WIN for current player
+            val = 10000.0f - (float)s_node_pool[c_idx].proof_depth;
+        } else if (c_proof == MCTS_PROOF_WIN) {
+            // Child is proven win for opponent -> proven LOSS for current player
+            val = -10000.0f + (float)s_node_pool[c_idx].proof_depth;
+        } else {
+            uint32_t n = s_node_pool[c_idx].visits;
+            float q = (n > 0) ? (s_node_pool[c_idx].wins / (float)n) : 0.0f;
+            float p = s_node_pool[c_idx].prior;
+            float u = c_puct * p * (sqrt_sum / (1.0f + (float)n));
+            val = q + u;
+        }
 
         if (val > best_val) {
             best_val = val;
@@ -495,8 +456,8 @@ static uint32_t puct_select_child(uint32_t parent_idx, float c_puct) {
     return best_child;
 }
 
-// Expand node in PUCT tree and assign domain heuristic priors
-static bool puct_expand_node(uint32_t node_idx, const GameState *state, float temperature, TranspositionTable *tt, uint16_t epoch, uint16_t depth) {
+// Expand node in PUCT tree and assign domain heuristic priors, opening book priors, and proof status
+static bool puct_expand_node(uint32_t node_idx, const GameState *state, float temperature, bool use_book, TranspositionTable *tt, uint16_t epoch, uint16_t depth) {
     if (s_node_pool[node_idx].first_child_idx != UINT32_MAX) return true;
 
     MoveList ml = *game_get_valid_moves(state);
@@ -511,31 +472,39 @@ static bool puct_expand_node(uint32_t node_idx, const GameState *state, float te
         return false;
     }
 
-    float priors[48];
-    compute_priors(state, &ml, temperature, priors);
-
-    uint32_t start_c = s_pool_tail;
+    uint32_t first_child = s_pool_tail;
     s_pool_tail += ml.count;
-    s_node_pool[node_idx].first_child_idx = start_c;
+    s_node_pool[node_idx].first_child_idx = first_child;
+
+    float priors[48];
+    compute_priors(state, &ml, temperature, use_book, priors);
 
     for (uint8_t i = 0; i < ml.count; i++) {
-        GameState child_st = *state;
-        game_execute_move(&child_st, ml.moves[i]);
-        s_node_pool[start_c + i].hash = child_st.hash;
-        s_node_pool[start_c + i].visits = 0;
-        s_node_pool[start_c + i].wins = 0.0f;
-        s_node_pool[start_c + i].prior = priors[i];
-        s_node_pool[start_c + i].parent_idx = node_idx;
-        s_node_pool[start_c + i].first_child_idx = UINT32_MAX;
-        s_node_pool[start_c + i].move = ml.moves[i];
-        s_node_pool[start_c + i].num_children = 0;
-        s_node_pool[start_c + i].unexpanded_idx = 0;
-        if (tt) {
-            tt_store(tt, child_st.hash, start_c + i, depth, epoch);
-        }
+        uint32_t child_idx = first_child + i;
+        s_node_pool[child_idx].move = ml.moves[i];
+        s_node_pool[child_idx].visits = 0;
+        s_node_pool[child_idx].wins = 0.0f;
+        s_node_pool[child_idx].prior = priors[i];
+        s_node_pool[child_idx].parent_idx = node_idx;
+        s_node_pool[child_idx].first_child_idx = UINT32_MAX;
+        s_node_pool[child_idx].num_children = 0;
+        s_node_pool[child_idx].unexpanded_idx = 0;
+
+        GameState child_state = *state;
+        game_execute_move(&child_state, ml.moves[i]);
+        s_node_pool[child_idx].hash = child_state.hash;
+        mcts_init_puct_node_proof(&s_node_pool[child_idx], &child_state, true);
     }
+    mcts_update_puct_proof_status(node_idx);
 
     return true;
+}
+
+static inline bool node_is_fully_expanded(uint32_t idx) {
+    if (s_node_pool[idx].first_child_idx == UINT32_MAX) return false;
+
+    return s_node_pool[idx].num_children > 0 &&
+           s_node_pool[idx].unexpanded_idx == s_node_pool[idx].num_children;
 }
 
 Move engine_mcts_puct_get_move(void *state, const GameState *game) {
@@ -566,13 +535,31 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
         return root_valid_moves.moves[0];
     }
 
-    // Direct Database Mode: If enabled and <= 5 pieces remain
-    if (st->use_db && wld_db_is_endgame(&game->board)) {
-        Move db_move = puct_select_database_move(game, &root_valid_moves, st->debug_log);
+    // Direct Database Mode: If enabled and board is within tablebase endgame range, use shortest-win solver!
+    if (st->use_db && wld_solver_is_applicable(game)) {
+        Move db_move = puct_select_database_move(game, st->debug_log);
         st->has_prev_state = true;
         st->prev_game_state = *game;
         st->prev_ai_move = db_move;
         return db_move;
+    }
+
+    // Direct Opening Book Mode: If enabled and in instant mode (BEST, GOOD, ALL), select directly (0 ms)!
+    if (st->use_book && (st->book_mode == BOOK_MODE_BEST || st->book_mode == BOOK_MODE_GOOD || st->book_mode == BOOK_MODE_ALL)) {
+        Move book_move = opening_book_select_move(game, st->book_mode, st->book_temperature, &st->rng_state);
+        if (!move_is_none(book_move)) {
+            if (st->debug_log) {
+                printf("\n[MCTS PUCT] Instant Opening Book Move Played: %02d(r%d,c%d) -> %02d(r%d,c%d) (Mode: %d)\n\n",
+                       MOVE_FROM(book_move), SQ_TO_ROW(MOVE_FROM(book_move)), SQ_TO_COL(MOVE_FROM(book_move)),
+                       MOVE_TO(book_move), SQ_TO_ROW(MOVE_TO(book_move)), SQ_TO_COL(MOVE_TO(book_move)),
+                       st->book_mode);
+                fflush(stdout);
+            }
+            st->has_prev_state = true;
+            st->prev_game_state = *game;
+            st->prev_ai_move = book_move;
+            return book_move;
+        }
     }
 
     // Safety threshold check: if pool is 80%+ full, reset to prevent overflow
@@ -621,9 +608,38 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
 
     tt_store(&st->tt, game->hash, st->root_idx, 0, st->search_epoch);
 
-    // Ensure root children are generated with domain heuristic priors
+    // Ensure root children are generated with domain heuristic priors and book priors
     if (s_node_pool[st->root_idx].first_child_idx == UINT32_MAX) {
-        puct_expand_node(st->root_idx, game, st->temperature, &st->tt, st->search_epoch, 1);
+        puct_expand_node(st->root_idx, game, st->temperature, st->use_book, &st->tt, st->search_epoch, 1);
+
+        // Root Tree Warm-Starting from Opening Book Metadata
+        if (st->use_book) {
+            BookMoveList root_book_moves;
+            if (opening_book_probe(game, &root_book_moves) && root_book_moves.count > 0) {
+                uint32_t fc = s_node_pool[st->root_idx].first_child_idx;
+                uint8_t nc = s_node_pool[st->root_idx].num_children;
+                for (uint8_t i = 0; i < nc; i++) {
+                    uint32_t c_idx = fc + i;
+                    Move cm = s_node_pool[c_idx].move;
+                    for (int b = 0; b < root_book_moves.count; b++) {
+                        if (move_equals(cm, root_book_moves.entries[b].move)) {
+                            uint32_t n0 = (uint32_t)root_book_moves.entries[b].depth * 5;
+                            if (n0 < 5) n0 = 5;
+                            float q0 = 0.5f + ((float)root_book_moves.entries[b].score / 200.0f);
+                            if (q0 < 0.01f) q0 = 0.01f;
+                            if (q0 > 0.99f) q0 = 0.99f;
+                            if (s_node_pool[c_idx].visits == 0) {
+                                s_node_pool[c_idx].visits = n0;
+                                s_node_pool[c_idx].wins = (float)n0 * q0;
+                                s_node_pool[st->root_idx].visits += n0;
+                                s_node_pool[st->root_idx].wins += (float)n0 * q0;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // High-performance Anytime Search Loop with PUCT Policy
@@ -672,7 +688,7 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
         // 2. EXPANSION (if reached node was previously visited and not expanded yet)
         if (!curr_state.is_game_over && path_len < MAX_TREE_DEPTH - 2) {
             if (s_node_pool[curr_idx].first_child_idx == UINT32_MAX) {
-                if (puct_expand_node(curr_idx, &curr_state, temperature, &st->tt, st->search_epoch, (uint16_t)path_len)) {
+                if (puct_expand_node(curr_idx, &curr_state, temperature, st->use_book, &st->tt, st->search_epoch, (uint16_t)path_len)) {
                     // Pick top child by PUCT/prior to step into
                     uint32_t best_child = puct_select_child(curr_idx, c_puct);
                     if (best_child != UINT32_MAX) {
@@ -708,10 +724,11 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
             rollout_depth++;
         }
 
-        float ai_reward = evaluate_rollout_terminal(&rollout_state, ai_player);
+        int total_depth = (path_len > 0 ? (path_len - 1) : 0) + rollout_depth;
+        float ai_reward = evaluate_rollout_terminal(&rollout_state, ai_player, total_depth);
 
-        // 4. BACKPROPAGATION
-        for (int p = 0; p < path_len; p++) {
+        // 4. BACKPROPAGATION (Values & Proof Updates)
+        for (int p = path_len - 1; p >= 0; p--) {
             uint32_t n_idx = path_stack[p];
             s_node_pool[n_idx].visits += 1;
 
@@ -722,12 +739,14 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
             } else {
                 s_node_pool[n_idx].wins += (1.0f - ai_reward);
             }
+
+            mcts_update_puct_proof_status(n_idx);
         }
 
         iterations++;
     }
 
-    // ROBUST CHILD SELECTION (child with max visits)
+    // ROBUST CHILD SELECTION WITH PROOF-NUMBER AWARENESS
     uint32_t best_child = UINT32_MAX;
     uint32_t max_visits = 0;
     float max_q = -1.0f;
@@ -735,14 +754,48 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
     if (s_node_pool[st->root_idx].first_child_idx != UINT32_MAX) {
         uint32_t fc = s_node_pool[st->root_idx].first_child_idx;
         uint8_t nc = s_node_pool[st->root_idx].num_children;
+
+        // 1. If any child is a proven win (child proof_status == MCTS_PROOF_LOSS), choose the shortest win
+        uint8_t min_win_depth = 255;
+        uint32_t best_win_child = UINT32_MAX;
         for (uint8_t i = 0; i < nc; i++) {
             uint32_t c_idx = fc + i;
-            uint32_t v = s_node_pool[c_idx].visits;
-            float q = (v > 0) ? (s_node_pool[c_idx].wins / (float)v) : 0.0f;
-            if (v > max_visits || (v == max_visits && q > max_q)) {
-                max_visits = v;
-                max_q = q;
-                best_child = c_idx;
+            if (s_node_pool[c_idx].proof_status == MCTS_PROOF_LOSS) {
+                if (s_node_pool[c_idx].proof_depth < min_win_depth) {
+                    min_win_depth = s_node_pool[c_idx].proof_depth;
+                    best_win_child = c_idx;
+                }
+            }
+        }
+
+        if (best_win_child != UINT32_MAX) {
+            best_child = best_win_child;
+        } else {
+            // 2. Otherwise, look for non-losing children with max visits
+            for (uint8_t i = 0; i < nc; i++) {
+                uint32_t c_idx = fc + i;
+                if (s_node_pool[c_idx].proof_status == MCTS_PROOF_WIN) {
+                    continue; // Skip proven losing moves
+                }
+                uint32_t v = s_node_pool[c_idx].visits;
+                float q = (v > 0) ? (s_node_pool[c_idx].wins / (float)v) : 0.0f;
+                if (v > max_visits || (v == max_visits && q > max_q)) {
+                    max_visits = v;
+                    max_q = q;
+                    best_child = c_idx;
+                }
+            }
+
+            // Fallback: if all children were proven losing, pick the one with max proof depth (longest resistance)
+            if (best_child == UINT32_MAX) {
+                uint8_t max_loss_depth = 0;
+                for (uint8_t i = 0; i < nc; i++) {
+                    uint32_t c_idx = fc + i;
+                    if (s_node_pool[c_idx].proof_depth >= max_loss_depth) {
+                        max_loss_depth = s_node_pool[c_idx].proof_depth;
+                        best_child = c_idx;
+                    }
+                }
             }
         }
     }
@@ -765,7 +818,7 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
                st->tt.hits, st->tt.lookups,
                tt_get_hit_rate(&st->tt));
         printf("--------------------------------------------------------------------------------\n");
-        printf("  # | Mossa            | Prior P(s,a) | Visite (N)     | Win Rate (w/N) | Q      | Note\n");
+        printf("  # | Mossa            | Prior P(s,a) | Visite (N)     | Win Rate (w/N) | Q      | Status / Proof\n");
         printf("--------------------------------------------------------------------------------\n");
 
         if (s_node_pool[st->root_idx].first_child_idx != UINT32_MAX) {
@@ -779,13 +832,23 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
                 float p = s_node_pool[c_idx].prior;
                 float q = (v > 0) ? (s_node_pool[c_idx].wins / (float)v) : 0.0f;
                 float pct = (total_visits > 0) ? ((float)v * 100.0f / (float)total_visits) : 0.0f;
-                const char *note = (c_idx == best_child) ? "[*SCELTA*]" : "";
+                const char *note = (c_idx == best_child) ? " [*SCELTA*]" : "";
+                char proof_buf[32] = "";
+                if (s_node_pool[c_idx].proof_status == MCTS_PROOF_LOSS) {
+                    snprintf(proof_buf, sizeof(proof_buf), "[PROVEN WIN d=%u]%s", s_node_pool[c_idx].proof_depth, note);
+                } else if (s_node_pool[c_idx].proof_status == MCTS_PROOF_WIN) {
+                    snprintf(proof_buf, sizeof(proof_buf), "[PROVEN LOSS d=%u]%s", s_node_pool[c_idx].proof_depth, note);
+                } else if (s_node_pool[c_idx].proof_status == MCTS_PROOF_DRAW) {
+                    snprintf(proof_buf, sizeof(proof_buf), "[PROVEN DRAW d=%u]%s", s_node_pool[c_idx].proof_depth, note);
+                } else {
+                    snprintf(proof_buf, sizeof(proof_buf), "%s", note);
+                }
 
                 printf(" %2d | %02d(r%d,c%d)->%02d(r%d,c%d) | %10.4f   | %7u (%5.1f%%) | %6.1f%%        | %6.4f | %s\n",
                        i + 1,
                        MOVE_FROM(cm), SQ_TO_ROW(MOVE_FROM(cm)), SQ_TO_COL(MOVE_FROM(cm)),
                        MOVE_TO(cm), SQ_TO_ROW(MOVE_TO(cm)), SQ_TO_COL(MOVE_TO(cm)),
-                       p, v, pct, q * 100.0f, q, note);
+                       p, v, pct, q * 100.0f, q, proof_buf);
             }
         }
         printf("--------------------------------------------------------------------------------\n");

@@ -29,6 +29,7 @@ ______________________________________________________________________________*/
 
 typedef struct {
     bool is_connected;
+    bool db_status_logged;
     double search_time;
 #ifdef _WIN32
     HANDLE h_process;
@@ -44,7 +45,39 @@ typedef struct {
 } KingsrowEngineState;
 
 
-#ifndef _WIN32
+#ifdef _WIN32
+static bool read_line_with_timeout(HANDLE h_pipe, char *buf, size_t max_len, int timeout_ms) {
+    if (!h_pipe || !buf || max_len == 0) return false;
+    
+    DWORD start = GetTickCount();
+    size_t idx = 0;
+    
+    while (idx < max_len - 1) {
+        DWORD avail = 0;
+        if (!PeekNamedPipe(h_pipe, NULL, 0, NULL, &avail, NULL)) {
+            break;
+        }
+        
+        if (avail > 0) {
+            char c = 0;
+            DWORD read_bytes = 0;
+            if (!ReadFile(h_pipe, &c, 1, &read_bytes, NULL) || read_bytes == 0) {
+                break;
+            }
+            if (c == '\r') continue;
+            buf[idx++] = c;
+            if (c == '\n') break;
+        } else {
+            if (timeout_ms > 0 && (int)(GetTickCount() - start) > timeout_ms) {
+                break;
+            }
+            Sleep(2);
+        }
+    }
+    buf[idx] = '\0';
+    return idx > 0;
+}
+#else
 static bool read_line_with_timeout(int fd, char *buf, size_t max_len, int timeout_ms) {
     if (fd < 0 || !buf || max_len == 0) return false;
     
@@ -102,7 +135,12 @@ static bool find_kingsrow_files(char *bridge_path, size_t b_len, char *dll_path,
                 snprintf(bridge_path, b_len, "%s", candidates_bridge[i]);
             }
 #else
-            snprintf(bridge_path, b_len, "%s", candidates_bridge[i]);
+            char resolved[1024];
+            if (GetFullPathNameA(candidates_bridge[i], sizeof(resolved), resolved, NULL)) {
+                snprintf(bridge_path, b_len, "%s", resolved);
+            } else {
+                snprintf(bridge_path, b_len, "%s", candidates_bridge[i]);
+            }
 #endif
             bridge_found = true;
             break;
@@ -122,7 +160,12 @@ static bool find_kingsrow_files(char *bridge_path, size_t b_len, char *dll_path,
                 snprintf(dll_path, d_len, "%s", candidates_dll[i]);
             }
 #else
-            snprintf(dll_path, d_len, "%s", candidates_dll[i]);
+            char resolved[1024];
+            if (GetFullPathNameA(candidates_dll[i], sizeof(resolved), resolved, NULL)) {
+                snprintf(dll_path, d_len, "%s", resolved);
+            } else {
+                snprintf(dll_path, d_len, "%s", candidates_dll[i]);
+            }
 #endif
             dll_found = true;
             break;
@@ -197,7 +240,44 @@ static bool start_kingsrow_process(KingsrowEngineState *ks) {
 
     ks->h_process = pi.hProcess;
     CloseHandle(pi.hThread);
-    ks->is_connected = true;
+
+    // Handshake: Send PING and wait for READY + PONG
+    DWORD written = 0;
+    WriteFile(ks->h_stdin_write, "PING\n", 5, &written, NULL);
+
+    char reply[256] = "";
+    bool got_ready = false;
+    bool got_pong = false;
+    for (int attempts = 0; attempts < 20; attempts++) {
+        if (read_line_with_timeout(ks->h_stdout_read, reply, sizeof(reply), 3000)) {
+            if (strncmp(reply, "READY", 5) == 0) got_ready = true;
+            if (strncmp(reply, "PONG", 4) == 0) got_pong = true;
+            if (got_ready && got_pong) {
+                ks->is_connected = true;
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    if (!ks->is_connected) {
+        return false;
+    }
+
+    // Configure Endgame Database (WLD)
+    const char *cfg_cmds[] = {
+        "COMMAND set dbpath ../db\n",
+        "COMMAND set enable_wld 1\n",
+        "COMMAND set max_dbpieces 8\n",
+        "COMMAND set dbmbytes 128\n"
+    };
+    for (size_t c = 0; c < sizeof(cfg_cmds)/sizeof(cfg_cmds[0]); c++) {
+        WriteFile(ks->h_stdin_write, cfg_cmds[c], (DWORD)strlen(cfg_cmds[c]), &written, NULL);
+        char ack[256] = "";
+        read_line_with_timeout(ks->h_stdout_read, ack, sizeof(ack), 1000);
+    }
+
     return true;
 #else
     // POSIX Subprocess Creation via Wine
@@ -268,15 +348,32 @@ static bool start_kingsrow_process(KingsrowEngineState *ks) {
             if (strncmp(reply, "PONG", 4) == 0) got_pong = true;
             if (got_ready && got_pong) {
                 ks->is_connected = true;
-                return true;
+                break;
             }
         } else {
             break;
         }
     }
 
-    ks->is_connected = false;
-    return false;
+    if (!ks->is_connected) {
+        return false;
+    }
+
+    // Configure Endgame Database (WLD)
+    const char *cfg_cmds[] = {
+        "COMMAND set dbpath ../db\n",
+        "COMMAND set enable_wld 1\n",
+        "COMMAND set max_dbpieces 8\n",
+        "COMMAND set dbmbytes 128\n"
+    };
+    for (size_t c = 0; c < sizeof(cfg_cmds)/sizeof(cfg_cmds[0]); c++) {
+        fputs(cfg_cmds[c], ks->stream_in);
+        fflush(ks->stream_in);
+        char ack[256] = "";
+        read_line_with_timeout(fd_read, ack, sizeof(ack), 1000);
+    }
+
+    return true;
 #endif
 }
 
@@ -353,11 +450,32 @@ Move engine_kingsrow_get_move(void *state, const GameState *game) {
     }
 
     char response[1024] = "";
-    DWORD read_bytes = 0;
-    if (!ReadFile(ks->h_stdout_read, response, sizeof(response) - 1, &read_bytes, NULL) || read_bytes == 0) {
+    bool got_move = false;
+    int timeout_ms = (int)(maxtime * 1000) + 25000;
+    while (read_line_with_timeout(ks->h_stdout_read, response, sizeof(response), timeout_ms)) {
+        if (strncmp(response, "MOVE ", 5) == 0) {
+            got_move = true;
+            break;
+        }
+    }
+    if (!got_move) {
+        const MoveList *fallback = game_get_valid_moves(game);
+        if (fallback->count > 0) return fallback->moves[0];
         return MOVE_NONE;
     }
-    response[read_bytes] = '\0';
+
+    if (!ks->db_status_logged) {
+        ks->db_status_logged = true;
+        WriteFile(ks->h_stdin_write, "COMMAND about\n", 14, &written, NULL);
+        char about_buf[1024] = "";
+        while (read_line_with_timeout(ks->h_stdout_read, about_buf, sizeof(about_buf), 1000)) {
+            if (strstr(about_buf, "endgame database") || strstr(about_buf, "WLD")) {
+                char *clean = (strncmp(about_buf, "REPLY ", 6) == 0) ? about_buf + 6 : about_buf;
+                fprintf(stderr, "\n[Kingsrow] %s\n", clean);
+                break;
+            }
+        }
+    }
 #else
     if (!ks->stream_in || !ks->stream_out) return MOVE_NONE;
     fputs(cmd, ks->stream_in);
@@ -377,6 +495,20 @@ Move engine_kingsrow_get_move(void *state, const GameState *game) {
         const MoveList *fallback = game_get_valid_moves(game);
         if (fallback->count > 0) return fallback->moves[0];
         return MOVE_NONE;
+    }
+
+    if (!ks->db_status_logged) {
+        ks->db_status_logged = true;
+        fputs("COMMAND about\n", ks->stream_in);
+        fflush(ks->stream_in);
+        char about_buf[1024] = "";
+        while (read_line_with_timeout(fd_read, about_buf, sizeof(about_buf), 1000)) {
+            if (strstr(about_buf, "endgame database") || strstr(about_buf, "WLD")) {
+                char *clean = (strncmp(about_buf, "REPLY ", 6) == 0) ? about_buf + 6 : about_buf;
+                fprintf(stderr, "\n[Kingsrow] %s\n", clean);
+                break;
+            }
+        }
     }
 #endif
 

@@ -4,6 +4,26 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#ifdef _MSC_VER
+#include <intrin.h>
+
+static inline int __builtin_popcount(unsigned int x) {
+    return (int)__popcnt(x);
+}
+
+static inline int __builtin_ctz(unsigned int x) {
+    unsigned long index;
+    _BitScanForward(&index, x);
+    return (int)index;
+}
+
+static inline int __builtin_clz(unsigned int x) {
+    unsigned long index;
+    _BitScanReverse(&index, x);
+    return 31 - (int)index;
+}
+#endif
+
 typedef enum {
     PIECE_NONE = 0,
     PIECE_WHITE_PAWN,

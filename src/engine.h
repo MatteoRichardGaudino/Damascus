@@ -2,6 +2,8 @@
 #define ENGINE_H
 
 #include "game.h"
+#include "wld_db.h"
+#include "opening_book.h"
 
 typedef struct Engine {
     void *internal_state;
@@ -17,6 +19,7 @@ typedef struct {
     int    mcts_max_rollout_depth; // Max simulation depth (e.g. 20, 35, 50, 70, 100, 150, 200)
     float  mcts_rollout_epsilon;   // Biased rollout exploration rate (e.g. 0.05, 0.15, 0.30, 1.0)
     bool   mcts_use_db;            // Enable/disable instant WLD tablebase mode (true/false)
+    bool   mcts_use_book;          // Enable/disable opening book for MCTS UCB1 (true/false)
     bool   mcts_debug_log;         // Enable/disable verbose console debug logging for MCTS
 
     // MCTS PUCT parameters
@@ -26,7 +29,18 @@ typedef struct {
     int    puct_max_rollout_depth; // Max simulation depth (e.g. 20, 70, 150)
     float  puct_rollout_epsilon;   // Biased rollout exploration rate (e.g. 0.05, 0.15, 0.30, 1.0)
     bool   puct_use_db;            // Enable/disable instant WLD tablebase mode (true/false)
+    bool   puct_use_book;          // Enable/disable opening book for MCTS PUCT (true/false)
     bool   puct_debug_log;         // Enable/disable verbose console debug logging for PUCT
+
+    // Opening Book parameters
+    BookBackendType book_backend;  // Selected book backend (KINGSROW_ODB, CHECKERBOARD_BIN, NONE)
+    BookPlayMode    book_mode;     // Selected book mode (BEST, GOOD, ALL, PUCT_GUIDED, OFF)
+    float           book_temperature; // Temperature for book move sampling
+    char            book_custom_path[256]; // Optional custom path override
+
+    // Endgame Tablebase (WLD) parameters
+    WLDBackendType wld_backend;    // Selected WLD backend (OFFICIAL_8PIECE, REDUCED_NATIVE, NONE)
+    char           wld_custom_path[256]; // Optional custom path override
 
     // CheckerBoard parameters
     double cb_search_time;         // Search time in seconds (e.g. 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0)

@@ -28,6 +28,17 @@ bool window_init(Window *win, const char *title, int width, int height) {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
+    GLFWmonitor *primary = glfwGetPrimaryMonitor();
+    if (primary) {
+        const GLFWvidmode *mode = glfwGetVideoMode(primary);
+        if (mode && mode->width >= 1920) {
+            int auto_w = (int)((float)mode->width * 0.70f);
+            int auto_h = (int)((float)mode->height * 0.70f);
+            if (auto_w > width) width = auto_w;
+            if (auto_h > height) height = auto_h;
+        }
+    }
+
     win->handle = glfwCreateWindow(width, height, title, NULL, NULL);
     if (!win->handle) {
         printf("Failed to create GLFW window\n");

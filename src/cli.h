@@ -10,7 +10,9 @@ typedef enum {
     CLI_MODE_HELP,
     CLI_MODE_MATCH,
     CLI_MODE_TOURNAMENT,
-    CLI_MODE_BENCH
+    CLI_MODE_BENCH,
+    CLI_MODE_TEST_ENDGAMES,
+    CLI_MODE_TEST_OPENING_BOOK
 } CliMode;
 
 typedef struct {
@@ -35,8 +37,10 @@ typedef struct {
     double     bench_budgets[8];
     int        bench_budget_count;
     
-    // Hyperparameters
+    // Hyperparameters & WLD Options
     EngineConfig engine_config;
+    WLDBackendType wld_backend;
+    char       wld_path[256];
     
     // Output & logging
     char       csv_path[256];

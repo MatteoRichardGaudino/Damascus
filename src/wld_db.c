@@ -1,10 +1,13 @@
 /*______________________________________________________________________________
   Damascus Native Endgame Tablebase (WLD - Win/Loss/Draw)
-  100% Native Pure C Retrograde Analysis Endgame Database for Italian Checkers
-  Zero external dependencies, Binary on-disk persistence, O(1) Instant Tablebase Probing
+  Unified Multi-Backend Tablebase Layer for Italian Draughts
+  Supports:
+    1. Reduced Native DB (damascus_wld.bin, <= 4 pieces, 100% C)
+    2. Official Kingsrow 8-Piece DB (data/wld, <= 8 pieces via egdb64 driver)
 ______________________________________________________________________________*/
 
 #include "wld_db.h"
+#include "wld_egdb.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,7 +20,7 @@ ______________________________________________________________________________*/
 #define WLD_RAW_B_WIN   2
 #define WLD_RAW_DRAW    3
 
-// State counts
+// State counts for native retrograde DB
 #define SIZEOF_1V1      8192
 #define SIZEOF_2V1      253952
 #define SIZEOF_1V2      253952
@@ -34,7 +37,11 @@ static uint8_t *s_db_1v3 = NULL;
 
 static uint16_t s_c2[32][32];
 static uint16_t s_c3[32][32][32];
-static bool s_initialized = false;
+static uint8_t s_c2_w1[496];
+static uint8_t s_c2_w2[496];
+
+static bool s_native_initialized = false;
+static WLDBackendType s_active_backend = WLD_BACKEND_NONE;
 
 static inline uint8_t get_packed(const uint8_t *arr, uint32_t idx) {
     if (!arr) return WLD_RAW_UNKNOWN;
@@ -50,16 +57,16 @@ static inline void set_packed(uint8_t *arr, uint32_t idx, uint8_t val) {
     arr[byte_idx] = (arr[byte_idx] & ~(0x3 << shift)) | ((val & 0x3) << shift);
 }
 
-static uint8_t s_c2_w1[496];
-static uint8_t s_c2_w2[496];
-
 static void init_tables(void) {
+    static bool tables_built = false;
+    if (tables_built) return;
+
     uint16_t idx2 = 0;
     for (int i = 0; i < 32; i++) {
         for (int j = i + 1; j < 32; j++) {
             s_c2[i][j] = idx2;
-            s_c2_w1[idx2] = i;
-            s_c2_w2[idx2] = j;
+            s_c2_w1[idx2] = (uint8_t)i;
+            s_c2_w2[idx2] = (uint8_t)j;
             idx2++;
         }
     }
@@ -71,9 +78,10 @@ static void init_tables(void) {
             }
         }
     }
+    tables_built = true;
 }
 
-// Encoders
+// Native Index Encoders
 static inline uint32_t encode_1v1(int w_sq, int w_type, int b_sq, int b_type, Player turn) {
     return (uint32_t)((((((w_sq * 32 + b_sq) * 2 + w_type) * 2 + b_type) * 2) + turn));
 }
@@ -84,7 +92,7 @@ static inline uint32_t encode_2v1(int w_sq1, int w_t1, int w_sq2, int w_t2, int 
         t = w_t1; w_t1 = w_t2; w_t2 = t;
     }
     uint16_t c2 = s_c2[w_sq1][w_sq2];
-    uint8_t w_types = (w_t1 << 1) | w_t2;
+    uint8_t w_types = (uint8_t)((w_t1 << 1) | w_t2);
     return (uint32_t)((((c2 * 4 + w_types) * 32 + b_sq) * 2 + b_t) * 2 + turn);
 }
 
@@ -94,7 +102,7 @@ static inline uint32_t encode_1v2(int w_sq, int w_t, int b_sq1, int b_t1, int b_
         t = b_t1; b_t1 = b_t2; b_t2 = t;
     }
     uint16_t c2 = s_c2[b_sq1][b_sq2];
-    uint8_t b_types = (b_t1 << 1) | b_t2;
+    uint8_t b_types = (uint8_t)((b_t1 << 1) | b_t2);
     return (uint32_t)((((c2 * 4 + b_types) * 32 + w_sq) * 2 + w_t) * 2 + turn);
 }
 
@@ -103,8 +111,8 @@ static inline uint32_t encode_2v2(int w1, int wt1, int w2, int wt2, int b1, int 
     if (b1 > b2) { int t = b1; b1 = b2; b2 = t; t = bt1; bt1 = bt2; bt2 = t; }
     uint16_t cw = s_c2[w1][w2];
     uint16_t cb = s_c2[b1][b2];
-    uint8_t w_types = (wt1 << 1) | wt2;
-    uint8_t b_types = (bt1 << 1) | bt2;
+    uint8_t w_types = (uint8_t)((wt1 << 1) | wt2);
+    uint8_t b_types = (uint8_t)((bt1 << 1) | bt2);
     return (uint32_t)(((((cw * 4 + w_types) * 496 + cb) * 4 + b_types) * 2) + turn);
 }
 
@@ -113,7 +121,7 @@ static inline uint32_t encode_3v1(int w1, int wt1, int w2, int wt2, int w3, int 
     if (w2 > w3) { int t = w2; w2 = w3; w3 = t; t = wt2; wt2 = wt3; wt3 = t; }
     if (w1 > w2) { int t = w1; w1 = w2; w2 = t; t = wt1; wt1 = wt2; wt2 = t; }
     uint16_t c3 = s_c3[w1][w2][w3];
-    uint8_t w_types = (wt1 << 2) | (wt2 << 1) | wt3;
+    uint8_t w_types = (uint8_t)((wt1 << 2) | (wt2 << 1) | wt3);
     return (uint32_t)((((c3 * 8 + w_types) * 32 + b) * 2 + bt) * 2 + turn);
 }
 
@@ -122,7 +130,7 @@ static inline uint32_t encode_1v3(int w, int wt, int b1, int bt1, int b2, int bt
     if (b2 > b3) { int t = b2; b2 = b3; b3 = t; t = bt2; bt2 = bt3; bt3 = t; }
     if (b1 > b2) { int t = b1; b1 = b2; b2 = t; t = bt1; bt1 = bt2; bt2 = t; }
     uint16_t c3 = s_c3[b1][b2][b3];
-    uint8_t b_types = (bt1 << 2) | (bt2 << 1) | bt3;
+    uint8_t b_types = (uint8_t)((bt1 << 2) | (bt2 << 1) | bt3);
     return (uint32_t)((((c3 * 8 + b_types) * 32 + w) * 2 + wt) * 2 + turn);
 }
 
@@ -199,7 +207,7 @@ static inline bool decode_1v2(uint32_t idx, GameState *out) {
     return true;
 }
 
-static void solve_all(void) {
+static void solve_all_native(void) {
     s_db_1v1 = (uint8_t*)calloc((SIZEOF_1V1 + 3) / 4, 1);
     s_db_2v1 = (uint8_t*)calloc((SIZEOF_2V1 + 3) / 4, 1);
     s_db_1v2 = (uint8_t*)calloc((SIZEOF_1V2 + 3) / 4, 1);
@@ -417,10 +425,7 @@ static void solve_all(void) {
         if (get_packed(s_db_1v2, idx) == WLD_RAW_UNKNOWN) set_packed(s_db_1v2, idx, WLD_RAW_DRAW);
     }
 
-
-
-
-    // 3. Solve 2v2
+    // 4. Solve 2v2
     for (int w1 = 0; w1 < 32; w1++) {
         for (int w2 = w1 + 1; w2 < 32; w2++) {
             for (int wt1 = 0; wt1 < 2; wt1++) {
@@ -448,7 +453,7 @@ static void solve_all(void) {
         }
     }
 
-    // 4. Solve 3v1 and 1v3
+    // 5. Solve 3v1 and 1v3
     for (int w1 = 0; w1 < 32; w1++) {
         for (int w2 = w1 + 1; w2 < 32; w2++) {
             for (int w3 = w2 + 1; w3 < 32; w3++) {
@@ -494,7 +499,7 @@ static void solve_all(void) {
 }
 
 bool wld_db_save(const char *filepath) {
-    if (!s_initialized) return false;
+    if (!s_native_initialized) return false;
     FILE *f = fopen(filepath, "wb");
     if (!f) return false;
 
@@ -552,15 +557,22 @@ bool wld_db_load(const char *filepath) {
 
     fclose(f);
     init_tables();
-    s_initialized = true;
+    s_native_initialized = true;
     return true;
 }
 
-void wld_db_init(void) {
-    if (s_initialized) return;
+static char s_custom_wld_path[256] = "";
+
+static bool init_native_backend(void) {
+    if (s_native_initialized) return true;
     init_tables();
 
-    // Check candidate paths for binary database file
+    if (s_custom_wld_path[0] != '\0') {
+        if (wld_db_load(s_custom_wld_path)) {
+            return true;
+        }
+    }
+
     const char *paths[] = {
         "data/damascus_wld.bin",
         "../data/damascus_wld.bin",
@@ -569,19 +581,21 @@ void wld_db_init(void) {
 
     for (size_t i = 0; i < sizeof(paths)/sizeof(paths[0]); i++) {
         if (wld_db_load(paths[i])) {
-            return;
+            return true;
         }
     }
 
-    // Solve and persist
-    solve_all();
-    s_initialized = true;
+    solve_all_native();
+    s_native_initialized = true;
     wld_db_save("data/damascus_wld.bin");
+    return true;
 }
 
-WLDValue wld_db_probe(const GameState *game) {
+static WLDValue probe_native(const GameState *game) {
     if (!game) return WLD_UNKNOWN;
-    if (!s_initialized) wld_db_init();
+    if (!s_native_initialized) {
+        if (!init_native_backend()) return WLD_UNKNOWN;
+    }
 
     const Board *b = &game->board;
     uint32_t wm = b->white_men;
@@ -699,3 +713,217 @@ WLDValue wld_db_probe(const GameState *game) {
     return WLD_UNKNOWN;
 }
 
+// Backend Names, Parsing & Custom Paths
+const char *wld_backend_get_name(WLDBackendType backend) {
+    switch (backend) {
+        case WLD_BACKEND_OFFICIAL_8PIECE:
+            return "UFFICIALE 8 PEZZI (data/wld)";
+        case WLD_BACKEND_REDUCED_NATIVE:
+            return "RIDOTTO NATIVO (damascus_wld.bin)";
+        case WLD_BACKEND_NONE:
+        default:
+            return "DISATTIVATO";
+    }
+}
+
+const char *wld_backend_get_cli_name(WLDBackendType backend) {
+    switch (backend) {
+        case WLD_BACKEND_OFFICIAL_8PIECE:
+            return "official";
+        case WLD_BACKEND_REDUCED_NATIVE:
+            return "reduced";
+        case WLD_BACKEND_NONE:
+        default:
+            return "none";
+    }
+}
+
+WLDBackendType wld_backend_parse(const char *name) {
+    if (!name || name[0] == '\0') return WLD_BACKEND_NONE;
+#ifdef _WIN32
+    #define WLD_STRCASECMP _stricmp
+#else
+    #define WLD_STRCASECMP strcasecmp
+#endif
+    if (WLD_STRCASECMP(name, "official") == 0 ||
+        WLD_STRCASECMP(name, "8piece") == 0 ||
+        WLD_STRCASECMP(name, "8p") == 0 ||
+        WLD_STRCASECMP(name, "kingsrow") == 0 ||
+        WLD_STRCASECMP(name, "kr") == 0) {
+        return WLD_BACKEND_OFFICIAL_8PIECE;
+    }
+    if (WLD_STRCASECMP(name, "reduced") == 0 ||
+        WLD_STRCASECMP(name, "native") == 0 ||
+        WLD_STRCASECMP(name, "4piece") == 0 ||
+        WLD_STRCASECMP(name, "4p") == 0 ||
+        WLD_STRCASECMP(name, "damascus") == 0) {
+        return WLD_BACKEND_REDUCED_NATIVE;
+    }
+    if (WLD_STRCASECMP(name, "none") == 0 ||
+        WLD_STRCASECMP(name, "off") == 0 ||
+        WLD_STRCASECMP(name, "disabled") == 0 ||
+        WLD_STRCASECMP(name, "0") == 0) {
+        return WLD_BACKEND_NONE;
+    }
+    return WLD_BACKEND_NONE;
+}
+
+void wld_set_custom_path(const char *path) {
+    if (path) {
+        snprintf(s_custom_wld_path, sizeof(s_custom_wld_path), "%s", path);
+    } else {
+        s_custom_wld_path[0] = '\0';
+    }
+}
+
+const char *wld_get_custom_path(void) {
+    return s_custom_wld_path;
+}
+
+// Unified Multi-Backend Management
+bool wld_init_backend(WLDBackendType backend) {
+    const char *db_dir = s_custom_wld_path[0] ? s_custom_wld_path : WLD_OFFICIAL_DB_DIR;
+    if (backend == WLD_BACKEND_OFFICIAL_8PIECE) {
+        if (wld_egdb_is_supported()) {
+            if (wld_egdb_init(db_dir, 128)) {
+                s_active_backend = WLD_BACKEND_OFFICIAL_8PIECE;
+                return true;
+            }
+        }
+        // Fallback to reduced native if official driver fails or is unsupported
+        if (init_native_backend()) {
+            s_active_backend = WLD_BACKEND_REDUCED_NATIVE;
+            return false;
+        }
+        s_active_backend = WLD_BACKEND_NONE;
+        return false;
+    } else if (backend == WLD_BACKEND_REDUCED_NATIVE) {
+        if (init_native_backend()) {
+            s_active_backend = WLD_BACKEND_REDUCED_NATIVE;
+            return true;
+        }
+        s_active_backend = WLD_BACKEND_NONE;
+        return false;
+    } else {
+        s_active_backend = WLD_BACKEND_NONE;
+        return true;
+    }
+}
+
+void wld_cleanup(void) {
+    if (wld_egdb_is_ready()) {
+        wld_egdb_close();
+    }
+    s_active_backend = WLD_BACKEND_NONE;
+}
+
+WLDStatus wld_get_status(WLDBackendType backend) {
+    WLDStatus status;
+    memset(&status, 0, sizeof(status));
+    status.active_backend = s_active_backend;
+
+    if (backend == WLD_BACKEND_OFFICIAL_8PIECE) {
+        if (!wld_egdb_is_supported()) {
+            status.available = false;
+            status.max_pieces = 0;
+            status.loaded_slices = 0;
+#ifdef __APPLE__
+            snprintf(status.status_message, sizeof(status.status_message),
+                     "[MACOS: DB RIDOTTO NATIVO ATTIVO (PRESTAZIONI OTTIMIZZATE)]");
+#else
+            snprintf(status.status_message, sizeof(status.status_message),
+                     "[NON SUPPORTATO SU QUESTA PIATTAFORMA]");
+#endif
+            return status;
+        }
+
+        const char *scan_dir = s_custom_wld_path[0] ? s_custom_wld_path : WLD_OFFICIAL_DB_DIR;
+        size_t missing = 0;
+        size_t total_bytes = 0;
+        size_t found = wld_egdb_scan_slices(scan_dir, &total_bytes, &missing);
+        if (found > 0 && missing == 0) {
+            status.available = true;
+            status.max_pieces = 8;
+            status.loaded_slices = found;
+            snprintf(status.status_message, sizeof(status.status_message),
+                     "[OK: %zu SLICE CARICATE (8 PEZZI)]", found);
+        } else {
+            status.available = false;
+            status.max_pieces = 0;
+            status.loaded_slices = found;
+            snprintf(status.status_message, sizeof(status.status_message),
+                     "[FILE MANCANTI - DB DISABILITATO]");
+        }
+        return status;
+    } else if (backend == WLD_BACKEND_REDUCED_NATIVE) {
+        status.available = true;
+        status.max_pieces = 4;
+        status.loaded_slices = 6;
+        snprintf(status.status_message, sizeof(status.status_message),
+                 "[DB RIDOTTO NATIVO ATTIVO (<= 4 PEZZI, 7.8 MB)]");
+        return status;
+    } else {
+        status.available = true;
+        status.max_pieces = 0;
+        status.loaded_slices = 0;
+        snprintf(status.status_message, sizeof(status.status_message),
+                 "[TABELLE FINALI DISATTIVATE]");
+        return status;
+    }
+}
+
+WLDBackendType wld_get_active_backend(void) {
+    return s_active_backend;
+}
+
+WLDValue wld_probe_state(const GameState *game) {
+    if (!game) return WLD_UNKNOWN;
+
+    if (s_active_backend == WLD_BACKEND_OFFICIAL_8PIECE) {
+        WLDValue val = wld_egdb_probe(game);
+        if (val != WLD_UNKNOWN) return val;
+
+        // Graceful fallback to native 4-piece if EGDB returns unknown on <= 4 pieces
+        if (wld_db_is_endgame(&game->board)) {
+            return probe_native(game);
+        }
+        return WLD_UNKNOWN;
+    } else if (s_active_backend == WLD_BACKEND_REDUCED_NATIVE) {
+        if (wld_db_is_endgame(&game->board)) {
+            return probe_native(game);
+        }
+        return WLD_UNKNOWN;
+    }
+
+    return WLD_UNKNOWN;
+}
+
+bool wld_is_endgame_state(const GameState *game) {
+    if (!game || s_active_backend == WLD_BACKEND_NONE) return false;
+    int count = __builtin_popcount(game->board.white_men) +
+                __builtin_popcount(game->board.white_kings) +
+                __builtin_popcount(game->board.black_men) +
+                __builtin_popcount(game->board.black_kings);
+
+    if (s_active_backend == WLD_BACKEND_OFFICIAL_8PIECE) {
+        return count <= 8;
+    } else if (s_active_backend == WLD_BACKEND_REDUCED_NATIVE) {
+        return count <= 4;
+    }
+    return false;
+}
+
+// Legacy Wrappers
+void wld_db_init(void) {
+    if (s_active_backend != WLD_BACKEND_NONE) return;
+    if (!wld_init_backend(WLD_BACKEND_OFFICIAL_8PIECE)) {
+        wld_init_backend(WLD_BACKEND_REDUCED_NATIVE);
+    }
+}
+
+WLDValue wld_db_probe(const GameState *game) {
+    if (s_active_backend == WLD_BACKEND_NONE) {
+        wld_db_init();
+    }
+    return wld_probe_state(game);
+}

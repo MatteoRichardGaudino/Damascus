@@ -43,6 +43,9 @@ set(SOURCES
     src/zobrist.c
     src/transposition.c
     src/wld_db.c
+    src/wld_egdb.c
+    src/wld_solver.c
+    src/opening_book.c
     src/interaction.c
     src/ui.c
     src/cli.c
@@ -81,3 +84,85 @@ add_custom_command(
             ${CMAKE_CURRENT_SOURCE_DIR}/shaders
             $<TARGET_FILE_DIR:Damascus>/shaders
 )
+
+# Automated Test Suite
+enable_testing()
+
+add_executable(test_wld
+    tests/test_wld.c
+    src/game.c
+    src/zobrist.c
+    src/transposition.c
+    src/mcts_ucb1.c
+    src/mcts_puct.c
+    src/wld_db.c
+    src/wld_egdb.c
+    src/wld_solver.c
+    src/opening_book.c
+)
+
+target_include_directories(test_wld PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+if(WIN32)
+    target_link_libraries(test_wld PRIVATE Threads::Threads)
+else()
+    target_link_libraries(test_wld PRIVATE Threads::Threads m)
+endif()
+
+add_test(NAME test_wld COMMAND test_wld)
+
+add_executable(test_wld_solver
+    tests/test_wld_solver.c
+    src/game.c
+    src/zobrist.c
+    src/transposition.c
+    src/mcts_ucb1.c
+    src/mcts_puct.c
+    src/wld_db.c
+    src/wld_egdb.c
+    src/wld_solver.c
+    src/opening_book.c
+)
+
+target_include_directories(test_wld_solver PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+if(WIN32)
+    target_link_libraries(test_wld_solver PRIVATE Threads::Threads)
+else()
+    target_link_libraries(test_wld_solver PRIVATE Threads::Threads m)
+endif()
+
+add_test(NAME test_wld_solver COMMAND test_wld_solver)
+
+add_executable(test_opening_book
+    tests/test_opening_book.c
+    src/game.c
+    src/opening_book.c
+    src/zobrist.c
+    src/transposition.c
+    src/mcts_ucb1.c
+    src/mcts_puct.c
+    src/wld_db.c
+    src/wld_egdb.c
+    src/wld_solver.c
+)
+
+target_include_directories(test_opening_book PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+if(WIN32)
+    target_link_libraries(test_opening_book PRIVATE Threads::Threads)
+else()
+    target_link_libraries(test_opening_book PRIVATE Threads::Threads m)
+endif()
+
+add_test(NAME test_opening_book COMMAND test_opening_book)
+
+set_tests_properties(test_wld test_wld_solver test_opening_book PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
+

@@ -5,6 +5,31 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define MCTS_DEPTH_DISCOUNT_GAMMA 0.005f
+
+// Game-theoretic Proof Status for MCTS-Solver
+typedef enum {
+    MCTS_PROOF_UNKNOWN = 0,
+    MCTS_PROOF_WIN     = 1, // Proven WIN for player to move at this node
+    MCTS_PROOF_LOSS    = 2, // Proven LOSS for player to move at this node
+    MCTS_PROOF_DRAW    = 3  // Proven DRAW for player to move at this node
+} MCTSProofStatus;
+
+static inline float mcts_compute_depth_discounted_reward(bool is_win, bool is_loss, bool is_draw, int total_depth) {
+    if (is_draw) {
+        return 0.5f;
+    }
+    if (is_win) {
+        float r = 1.0f - MCTS_DEPTH_DISCOUNT_GAMMA * (float)total_depth;
+        return (r < 0.51f) ? 0.51f : r;
+    }
+    if (is_loss) {
+        float r = MCTS_DEPTH_DISCOUNT_GAMMA * (float)total_depth;
+        return (r > 0.49f) ? 0.49f : r;
+    }
+    return 0.5f;
+}
+
 /* Fast Domain Heuristic H(s, a) for Italian Draughts (FID rules):
    - King capture: +3.0
    - Man capture: +1.5
