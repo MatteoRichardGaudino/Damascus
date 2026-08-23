@@ -307,11 +307,16 @@ static void print_help(const char *prog_name) {
     printf("  --bench               Run speed, throughput, and MCTS search benchmarks.\n");
     printf("  --test-endgames       Evaluate WLD tablebase solving speed & conversion accuracy.\n");
     printf("  --test-opening-book   Evaluate Opening Book Database (ODB & BIN) throughput & accuracy.\n");
+    printf("  --test-opening-tournament Run 50-game head-to-head match (ODB Assisted vs Baseline No-Book) & Elo benchmark.\n");
     printf("  --gui                 Launch the OpenGL/GLFW 3D graphical interface.\n");
     printf("  --help, -h            Show this help manual.\n\n");
     printf("MATCH & TOURNAMENT OPTIONS:\n");
     printf("  --white=<engine>      White engine: ucb1, puct, checkerboard, kingsrow, random (default: ucb1)\n");
     printf("  --black=<engine>      Black engine: ucb1, puct, checkerboard, kingsrow, random (default: puct)\n");
+    printf("  --white-book / --white-no-book Enable/disable Opening Book for White engine\n");
+    printf("  --black-book / --black-no-book Enable/disable Opening Book for Black engine\n");
+    printf("  --white-book-mode=<mode> Opening book mode for White (best, good, all, puct_guided, off)\n");
+    printf("  --black-book-mode=<mode> Opening book mode for Black (best, good, all, puct_guided, off)\n");
     printf("  --engines=<list>      Comma-separated engines for tournament, or 'all'\n");
     printf("                        Example: --engines=ucb1,puct,checkerboard,random\n");
     printf("  --time=<seconds>, -T  Time budget per move in seconds (default: 1.0 for match, 0.2 for tournament)\n");
@@ -412,6 +417,10 @@ static bool parse_cli_args(int argc, char **argv, CliConfig *cfg) {
             cfg->mode = CLI_MODE_TEST_ENDGAMES;
         } else if (strcmp(arg, "--test-opening-book") == 0) {
             cfg->mode = CLI_MODE_TEST_OPENING_BOOK;
+        } else if (strcmp(arg, "--test-opening-tournament") == 0) {
+            cfg->mode = CLI_MODE_TEST_OPENING_TOURNAMENT;
+            if (cfg->games == 10) cfg->games = 50; // Default 50 games for opening book tournament validation
+            if (cfg->time_budget == 1.0) cfg->time_budget = 0.20; // Default 0.2s budget for fast tournament
         } else if (strcmp(arg, "--gui") == 0) {
             cfg->mode = CLI_MODE_GUI;
         } else if (strncmp(arg, "--white=", 8) == 0) {
@@ -421,6 +430,19 @@ static bool parse_cli_args(int argc, char **argv, CliConfig *cfg) {
                 return false;
             }
             cfg->white_engine = t;
+        } else if (strcmp(arg, "--white-book") == 0) {
+            cfg->has_white_book_override = true;
+            cfg->white_use_book = true;
+            if (cfg->white_book_mode == BOOK_MODE_OFF) cfg->white_book_mode = BOOK_MODE_BEST;
+        } else if (strcmp(arg, "--white-no-book") == 0) {
+            cfg->has_white_book_override = true;
+            cfg->white_use_book = false;
+            cfg->white_book_mode = BOOK_MODE_OFF;
+        } else if (strncmp(arg, "--white-book-mode=", 18) == 0) {
+            BookPlayMode m = opening_book_mode_parse(arg + 18);
+            cfg->has_white_book_override = true;
+            cfg->white_book_mode = m;
+            cfg->white_use_book = (m != BOOK_MODE_OFF);
         } else if (strncmp(arg, "--black=", 8) == 0) {
             EngineType t = parse_engine_name(arg + 8);
             if (t == ENGINE_TYPE_COUNT) {
@@ -428,6 +450,19 @@ static bool parse_cli_args(int argc, char **argv, CliConfig *cfg) {
                 return false;
             }
             cfg->black_engine = t;
+        } else if (strcmp(arg, "--black-book") == 0) {
+            cfg->has_black_book_override = true;
+            cfg->black_use_book = true;
+            if (cfg->black_book_mode == BOOK_MODE_OFF) cfg->black_book_mode = BOOK_MODE_BEST;
+        } else if (strcmp(arg, "--black-no-book") == 0) {
+            cfg->has_black_book_override = true;
+            cfg->black_use_book = false;
+            cfg->black_book_mode = BOOK_MODE_OFF;
+        } else if (strncmp(arg, "--black-book-mode=", 18) == 0) {
+            BookPlayMode m = opening_book_mode_parse(arg + 18);
+            cfg->has_black_book_override = true;
+            cfg->black_book_mode = m;
+            cfg->black_use_book = (m != BOOK_MODE_OFF);
         } else if (strncmp(arg, "--engines=", 10) == 0) {
             const char *eng_str = arg + 10;
             if (strcasecmp(eng_str, "all") == 0) {
@@ -638,6 +673,30 @@ static GameRecord play_single_game(int game_index, EngineType white_type, Engine
 
     EngineConfig white_cfg = cfg->engine_config;
     EngineConfig black_cfg = cfg->engine_config;
+
+    // Apply player-specific opening book overrides if configured
+    if (cfg->has_white_book_override) {
+        if (white_type == cfg->white_engine) {
+            white_cfg.mcts_use_book = cfg->white_use_book;
+            white_cfg.puct_use_book = cfg->white_use_book;
+            white_cfg.book_mode = cfg->white_book_mode;
+        } else if (black_type == cfg->white_engine) {
+            black_cfg.mcts_use_book = cfg->white_use_book;
+            black_cfg.puct_use_book = cfg->white_use_book;
+            black_cfg.book_mode = cfg->white_book_mode;
+        }
+    }
+    if (cfg->has_black_book_override) {
+        if (black_type == cfg->black_engine) {
+            black_cfg.mcts_use_book = cfg->black_use_book;
+            black_cfg.puct_use_book = cfg->black_use_book;
+            black_cfg.book_mode = cfg->black_book_mode;
+        } else if (white_type == cfg->black_engine) {
+            white_cfg.mcts_use_book = cfg->black_use_book;
+            white_cfg.puct_use_book = cfg->black_use_book;
+            white_cfg.book_mode = cfg->black_book_mode;
+        }
+    }
 
     double w_time = (cfg->white_time_budget > 0.0) ? cfg->white_time_budget : cfg->time_budget;
     double b_time = (cfg->black_time_budget > 0.0) ? cfg->black_time_budget : cfg->time_budget;
@@ -1780,6 +1839,103 @@ static int run_test_opening_book_mode(const CliConfig *cfg) {
     }
 }
 
+static int run_test_opening_tournament_mode(const CliConfig *cfg) {
+    printf("==============================================================================\n");
+    printf("  Damascus - Opening Book Headless Tournament & Elo Validation\n");
+    printf("==============================================================================\n\n");
+
+    BookBackendType backend = cfg->engine_config.book_backend;
+    if (backend == BOOK_BACKEND_NONE) {
+        backend = BOOK_BACKEND_KINGSROW_ODB;
+    }
+    const char *custom_path = (cfg->engine_config.book_custom_path[0] != '\0') ? cfg->engine_config.book_custom_path : NULL;
+
+    printf("[1/3] Initializing Opening Book Subsystem...\n");
+    bool loaded = opening_book_init(backend, custom_path);
+    if (!loaded && backend == BOOK_BACKEND_KINGSROW_ODB) {
+        backend = BOOK_BACKEND_CHECKERBOARD_BIN;
+        loaded = opening_book_init(backend, custom_path);
+    }
+
+    OpeningBookStatus status = opening_book_get_status();
+    if (!loaded || !status.loaded) {
+        fprintf(stderr, "\n[ERROR] Opening Book Database could not be loaded for tournament!\n");
+        return 1;
+    }
+
+    printf("  -> Backend : %s (%u positions, %u moves)\n",
+           opening_book_backend_get_name(status.active_backend), status.total_positions, status.total_moves);
+    printf("  -> Database: %s\n\n", status.file_path);
+
+    int num_games = cfg->games > 0 ? cfg->games : 50;
+    double budget = cfg->time_budget > 0.0 ? cfg->time_budget : 0.20;
+
+    printf("[2/3] Executing Headless Tournament: MCTS PUCT (with ODB) vs MCTS PUCT (No Book)\n");
+    printf("  -> Total Games : %d (alternating colors each game)\n", num_games);
+    printf("  -> Time Budget : %.2fs per move\n", budget);
+    printf("  -> Threads     : %d\n\n", cfg->threads > 0 ? cfg->threads : 1);
+
+    CliConfig match_cfg = *cfg;
+    match_cfg.mode = CLI_MODE_MATCH;
+    match_cfg.white_engine = ENGINE_TYPE_MCTS_PUCT;
+    match_cfg.black_engine = ENGINE_TYPE_MCTS_PUCT;
+    match_cfg.games = num_games;
+    match_cfg.time_budget = budget;
+    match_cfg.has_white_book_override = true;
+    match_cfg.white_use_book = true;
+    match_cfg.white_book_mode = (cfg->engine_config.book_mode != BOOK_MODE_OFF) ? cfg->engine_config.book_mode : BOOK_MODE_BEST;
+    match_cfg.has_black_book_override = true;
+    match_cfg.black_use_book = false;
+    match_cfg.black_book_mode = BOOK_MODE_OFF;
+
+    int ret = run_match_mode(&match_cfg);
+
+    printf("\n[3/3] Testing Varied Opening Diversity (20 simulated opening trajectories)...\n");
+    GameState div_game;
+    uint32_t rng_state = 0x87654321;
+    int unique_openings = 0;
+    uint64_t opening_signatures[20];
+    memset(opening_signatures, 0, sizeof(opening_signatures));
+
+    for (int g = 0; g < 20; g++) {
+        game_init(&div_game, MODE_2PLAYER, PLAYER_WHITE, ENGINE_TYPE_RANDOM, ENGINE_TYPE_RANDOM);
+        uint64_t sig = 0;
+        for (int ply = 0; ply < 6 && !div_game.is_game_over; ply++) {
+            Move m = opening_book_select_move(&div_game, BOOK_MODE_GOOD, 1.0f, &rng_state);
+            if (move_is_none(m)) {
+                const MoveList *legal = game_get_valid_moves(&div_game);
+                if (legal && legal->count > 0) m = legal->moves[0];
+            }
+            if (!move_is_none(m)) {
+                sig = (sig * 1000003ULL) ^ (uint64_t)(m.from * 32 + m.to);
+                game_execute_move(&div_game, m);
+            }
+        }
+        opening_signatures[g] = sig;
+        bool duplicate = false;
+        for (int prev = 0; prev < g; prev++) {
+            if (opening_signatures[prev] == sig) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) unique_openings++;
+    }
+
+    double diversity_pct = ((double)unique_openings / 20.0) * 100.0;
+    printf("  -> Unique 6-ply Opening Trajectories: %d / 20 (%.1f%% diversity)\n",
+           unique_openings, diversity_pct);
+
+    if (diversity_pct >= 60.0) {
+        printf("  -> Opening Diversity Check: PASSED\n\n");
+    } else {
+        printf("  -> Opening Diversity Check: WARNING (low variation)\n\n");
+    }
+
+    printf(">>> OPENING BOOK TOURNAMENT & VERIFICATION COMPLETE <<<\n\n");
+    return ret;
+}
+
 int cli_run(int argc, char **argv) {
     CliConfig cfg;
     if (!parse_cli_args(argc, argv, &cfg)) {
@@ -1800,6 +1956,8 @@ int cli_run(int argc, char **argv) {
             return run_test_endgames_mode(&cfg);
         case CLI_MODE_TEST_OPENING_BOOK:
             return run_test_opening_book_mode(&cfg);
+        case CLI_MODE_TEST_OPENING_TOURNAMENT:
+            return run_test_opening_tournament_mode(&cfg);
         case CLI_MODE_GUI:
         default:
             return 0;

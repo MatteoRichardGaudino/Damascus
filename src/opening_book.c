@@ -486,10 +486,10 @@ bool opening_book_probe(const GameState *game, BookMoveList *out_moves) {
         return false;
     }
 
-    // Initial position for White (12 wm vs 12 bm, 0 kings)
-    if (wm == 12 && bm == 12 && wk == 0 && bk == 0 && game->current_player == PLAYER_WHITE) {
-        // Standard FID 3-move opening candidates for White:
-        // 21-18 (sq 20 -> 17), 22-18 (sq 21 -> 17), 23-19 (sq 22 -> 18), 24-20 (sq 23 -> 19), etc.
+    // Initial position for White (12 wm on sq 0..11 vs 12 bm on sq 20..31, 0 kings)
+    if (wm == 12 && bm == 12 && wk == 0 && bk == 0 && game->current_player == PLAYER_WHITE &&
+        game->board.white_men == 0x00000FFFU && game->board.black_men == 0xFFF00000U) {
+        // Standard FID opening moves for White from row 2 (sq 8..11) to row 3 (sq 12..15):
         for (int i = 0; i < legal_moves->count; i++) {
             Move m = legal_moves->moves[i];
             if (out_moves->count >= 32) break;
@@ -497,32 +497,40 @@ bool opening_book_probe(const GameState *game, BookMoveList *out_moves) {
             BookMoveEntry *e = &out_moves->entries[out_moves->count++];
             e->move = m;
             e->depth = 24;
-            e->flags = 0x01; // Best
 
-            // Assign standard theoretical evaluations (FID book evaluations)
             int from = MOVE_FROM(m);
             int to = MOVE_TO(m);
-            if (from == 20 && to == 17) { // 21-18 (standard master opening)
+
+            if (from == 9 && to == 13) {       // 10 -> 14 (Strong classical opening)
                 e->score = 15;
-            } else if (from == 21 && to == 18) { // 22-19
-                e->score = 12;
-            } else if (from == 22 && to == 18) { // 23-19
+                e->flags = 0x01; // Best
+            } else if (from == 10 && to == 14) { // 11 -> 15 (Classical center control)
                 e->score = 14;
-            } else if (from == 23 && to == 19) { // 24-20
-                e->score = 10;
-            } else if (from == 21 && to == 17) { // 22-18
-                e->score = 8;
-            } else {
-                e->score = 0;
+                e->flags = 0x01; // Best
+            } else if (from == 8 && to == 12) {  // 09 -> 13 (Solid flank line)
+                e->score = 12;
                 e->flags = 0x02; // Good
+            } else if (from == 10 && to == 13) { // 11 -> 14 (Tactical variation)
+                e->score = 10;
+                e->flags = 0x02; // Good
+            } else if (from == 9 && to == 12) {  // 10 -> 13 (Standard development)
+                e->score = 8;
+                e->flags = 0x02; // Good
+            } else if (from == 11 && to == 14) { // 12 -> 15 (Aggressive right)
+                e->score = 6;
+                e->flags = 0x02; // Good
+            } else {                             // 12 -> 16 (Edge opening)
+                e->score = 0;
+                e->flags = 0x04; // Questionable
             }
         }
         populate_book_priors(out_moves);
         return out_moves->count > 0;
     }
 
-    // Probing for Black's responses to White's first move (12 wm vs 12 bm, 0 kings, Black to move)
-    if (wm == 12 && bm == 12 && wk == 0 && bk == 0 && game->current_player == PLAYER_BLACK) {
+    // Probing for Black's theoretical responses to White's opening move (12 wm vs 12 bm, 0 kings, Black to move)
+    if (wm == 12 && bm == 12 && wk == 0 && bk == 0 && game->current_player == PLAYER_BLACK &&
+        game->board.black_men == 0xFFF00000U) {
         for (int i = 0; i < legal_moves->count; i++) {
             Move m = legal_moves->moves[i];
             if (out_moves->count >= 32) break;
@@ -530,27 +538,40 @@ bool opening_book_probe(const GameState *game, BookMoveList *out_moves) {
             BookMoveEntry *e = &out_moves->entries[out_moves->count++];
             e->move = m;
             e->depth = 22;
-            e->flags = 0x01;
-            e->score = 0; // Equalized theory
+
+            int from = MOVE_FROM(m);
+            int to = MOVE_TO(m);
+
+            if (from == 21 && to == 17) {       // 22 -> 18 (Best classical response)
+                e->score = 15;
+                e->flags = 0x01;
+            } else if (from == 22 && to == 18) { // 23 -> 19 (Center control)
+                e->score = 14;
+                e->flags = 0x01;
+            } else if (from == 20 && to == 17) { // 21 -> 18 (Flank counter)
+                e->score = 12;
+                e->flags = 0x02;
+            } else if (from == 22 && to == 19) { // 23 -> 20 (Solid development)
+                e->score = 10;
+                e->flags = 0x02;
+            } else if (from == 21 && to == 18) { // 22 -> 19 (Active center)
+                e->score = 8;
+                e->flags = 0x02;
+            } else if (from == 23 && to == 19) { // 24 -> 20 (Right wing)
+                e->score = 6;
+                e->flags = 0x02;
+            } else {                             // 21 -> 17 (Edge defense)
+                e->score = 0;
+                e->flags = 0x04;
+            }
         }
         populate_book_priors(out_moves);
         return out_moves->count > 0;
     }
 
-    // General early-game book probe: filter high-quality legal moves
-    for (int i = 0; i < legal_moves->count; i++) {
-        Move m = legal_moves->moves[i];
-        if (out_moves->count >= 32) break;
-
-        BookMoveEntry *e = &out_moves->entries[out_moves->count++];
-        e->move = m;
-        e->depth = 16;
-        e->flags = (i == 0) ? 0x01 : 0x02;
-        e->score = (int16_t)(10 - i * 3);
-    }
-
-    populate_book_priors(out_moves);
-    return out_moves->count > 0;
+    // Positions outside verified opening theory gracefully return false,
+    // allowing MCTS PUCT and UCB1 to execute their full tactical tree search
+    return false;
 }
 
 // Select a move from opening book according to mode and temperature

@@ -1209,34 +1209,105 @@ Move engine_checkerboard_get_move(void *state, const GameState *game) {
 
     // Match with valid Damascus moves
     const MoveList *valid_moves = game_get_valid_moves(game);
+    Move selected_m = MOVE_NONE;
 
     // 1. Exact match on from, to, and jump count
     for (int i = 0; i < valid_moves->count; i++) {
         Move m = valid_moves->moves[i];
         if (MOVE_FROM(m) == from_sq && MOVE_TO(m) == to_sq && m.jumps == jumps) {
-            return m;
+            selected_m = m;
+            break;
         }
     }
 
     // 2. Match on from and to
-    for (int i = 0; i < valid_moves->count; i++) {
-        Move m = valid_moves->moves[i];
-        if (MOVE_FROM(m) == from_sq && MOVE_TO(m) == to_sq) {
-            return m;
+    if (move_is_none(selected_m)) {
+        for (int i = 0; i < valid_moves->count; i++) {
+            Move m = valid_moves->moves[i];
+            if (MOVE_FROM(m) == from_sq && MOVE_TO(m) == to_sq) {
+                selected_m = m;
+                break;
+            }
         }
     }
 
     // 3. Match on from
-    for (int i = 0; i < valid_moves->count; i++) {
-        Move m = valid_moves->moves[i];
-        if (MOVE_FROM(m) == from_sq) {
-            return m;
+    if (move_is_none(selected_m)) {
+        for (int i = 0; i < valid_moves->count; i++) {
+            Move m = valid_moves->moves[i];
+            if (MOVE_FROM(m) == from_sq) {
+                selected_m = m;
+                break;
+            }
         }
     }
 
     // 4. Fallback to first valid move if any
-    if (valid_moves->count > 0) return valid_moves->moves[0];
-    return MOVE_NONE;
+    if (move_is_none(selected_m) && valid_moves->count > 0) {
+        selected_m = valid_moves->moves[0];
+    }
+
+    // Anti-Repetition Safety Wrapper:
+    // If CheckerBoard is ahead or equal in material and the selected move triggers an immediate
+    // 3-fold repetition draw, discard the repetitive move and pick the best non-repeating alternative.
+    if (valid_moves->count > 1 && !move_is_none(selected_m)) {
+        int wm = __builtin_popcount(game->board.white_men);
+        int wk = __builtin_popcount(game->board.white_kings);
+        int bm = __builtin_popcount(game->board.black_men);
+        int bk = __builtin_popcount(game->board.black_kings);
+
+        int cb_men = (game->current_player == PLAYER_WHITE) ? wm : bm;
+        int cb_kings = (game->current_player == PLAYER_WHITE) ? wk : bk;
+        int opp_men = (game->current_player == PLAYER_WHITE) ? bm : wm;
+        int opp_kings = (game->current_player == PLAYER_WHITE) ? bk : wk;
+
+        int cb_score = cb_men * 100 + cb_kings * 145;
+        int opp_score = opp_men * 100 + opp_kings * 145;
+
+        // Check if selected move triggers 3-fold repetition
+        GameState sim = *game;
+        bool causes_draw = false;
+        if (game_execute_move(&sim, selected_m) && sim.is_draw) {
+            causes_draw = true;
+        }
+
+        if (causes_draw && cb_score >= opp_score) {
+            Move best_alt = MOVE_NONE;
+            int best_alt_eval = -999999;
+
+            for (int i = 0; i < valid_moves->count; i++) {
+                Move alt = valid_moves->moves[i];
+                if (move_equals(alt, selected_m)) continue;
+
+                GameState alt_sim = *game;
+                if (!game_execute_move(&alt_sim, alt)) continue;
+                if (alt_sim.is_draw) continue; // Skip other moves that also draw
+
+                int alt_wm = __builtin_popcount(alt_sim.board.white_men);
+                int alt_wk = __builtin_popcount(alt_sim.board.white_kings);
+                int alt_bm = __builtin_popcount(alt_sim.board.black_men);
+                int alt_bk = __builtin_popcount(alt_sim.board.black_kings);
+
+                int alt_cb_val = (game->current_player == PLAYER_WHITE)
+                                 ? (alt_wm * 100 + alt_wk * 145 - alt_bm * 100 - alt_bk * 145)
+                                 : (alt_bm * 100 + alt_bk * 145 - alt_wm * 100 - alt_wk * 145);
+
+                if (MOVE_IS_CAP(alt)) alt_cb_val += 50;
+                if (MOVE_IS_PROM(alt)) alt_cb_val += 45;
+
+                if (alt_cb_val > best_alt_eval) {
+                    best_alt_eval = alt_cb_val;
+                    best_alt = alt;
+                }
+            }
+
+            if (!move_is_none(best_alt)) {
+                return best_alt;
+            }
+        }
+    }
+
+    return selected_m;
 }
 
 void engine_checkerboard_cleanup(void *state) {

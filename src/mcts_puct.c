@@ -41,6 +41,7 @@ typedef struct {
 // Per-thread dynamic preallocated memory pool of 2,000,000 nodes (~48 MB per active thread)
 static _Thread_local PUCTNode *s_node_pool = NULL;
 static _Thread_local uint32_t s_pool_tail = 0;
+static _Thread_local void *s_pool_owner = NULL;
 
 #ifdef _WIN32
 #include <windows.h>
@@ -563,14 +564,15 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
     }
 
     // Safety threshold check: if pool is 80%+ full, reset to prevent overflow
-    if (s_pool_tail >= PUCT_SAFETY_THRESHOLD_NODES) {
+    if (s_pool_tail >= PUCT_SAFETY_THRESHOLD_NODES || s_pool_owner != st) {
         pool_reset();
+        s_pool_owner = st;
         st->root_idx = UINT32_MAX;
     }
 
     // Subtree Promotion (Tree Reuse with 64-bit Zobrist Hash)
     bool tree_reused = false;
-    if (st->has_prev_state && st->root_idx != UINT32_MAX && st->root_idx < s_pool_tail) {
+    if (s_pool_owner == st && st->has_prev_state && st->root_idx != UINT32_MAX && st->root_idx < s_pool_tail) {
         uint32_t ai_child_idx = UINT32_MAX;
         if (s_node_pool[st->root_idx].first_child_idx != UINT32_MAX) {
             uint32_t fc = s_node_pool[st->root_idx].first_child_idx;
@@ -599,6 +601,7 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
 
     if (!tree_reused) {
         pool_reset();
+        s_pool_owner = st;
         tt_clear(&st->tt);
         st->search_epoch = 1;
         st->root_idx = create_root_node(game->hash);

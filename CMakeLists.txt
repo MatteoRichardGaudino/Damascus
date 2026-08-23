@@ -163,6 +163,30 @@ endif()
 
 add_test(NAME test_opening_book COMMAND test_opening_book)
 
+add_executable(test_cb_study
+    tests/test_cb_study.c
+    src/game.c
+    src/engine_checkerboard.c
+    src/opening_book.c
+    src/zobrist.c
+    src/transposition.c
+    src/mcts_ucb1.c
+    src/mcts_puct.c
+    src/wld_db.c
+    src/wld_egdb.c
+    src/wld_solver.c
+)
+
+target_include_directories(test_cb_study PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+if(WIN32)
+    target_link_libraries(test_cb_study PRIVATE Threads::Threads)
+else()
+    target_link_libraries(test_cb_study PRIVATE Threads::Threads m)
+endif()
+
 set_tests_properties(test_wld test_wld_solver test_opening_book PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 
