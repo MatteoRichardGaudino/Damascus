@@ -107,15 +107,14 @@ static void test_feasibility_egdb_load_and_accuracy(void) {
     ASSERT_TEST(st.loaded_slices == 90, "EGDB driver verified all 90 slices");
     ASSERT_TEST(st.max_pieces == 8, "EGDB driver verified 8-piece capacity");
 
-    // Accuracy test across known 2-piece, 4-piece, and 6-piece positions
-    // 1v1 Draw
+    // 2v2 Draw (2 Kings vs 2 Kings in opposite double corners)
     GameState g_draw;
     memset(&g_draw, 0, sizeof(g_draw));
-    g_draw.board.white_kings = (1U << 0);
-    g_draw.board.black_kings = (1U << 28);
+    g_draw.board.white_kings = (1U << 0) | (1U << 1);
+    g_draw.board.black_kings = (1U << 30) | (1U << 31);
     g_draw.current_player = PLAYER_WHITE;
     g_draw.hash = zobrist_compute_hash(&g_draw.board, PLAYER_WHITE);
-    ASSERT_TEST(wld_probe_state(&g_draw) == WLD_DRAW, "EGDB accurately probes 1v1 Draw");
+    ASSERT_TEST(wld_probe_state(&g_draw) == WLD_DRAW, "EGDB accurately probes 2v2 Draw");
 
     // 2v1 Win
     GameState g_2v1;

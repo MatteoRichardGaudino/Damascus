@@ -265,4 +265,23 @@ void engine_apply_config(Engine *engine, EngineType type, const EngineConfig *cf
     }
 }
 
+void engine_get_stats(const Engine *engine, EngineType type, EngineStats *out_stats) {
+    if (!out_stats) return;
+    memset(out_stats, 0, sizeof(EngineStats));
+    if (!engine || !engine->internal_state) return;
 
+    switch (type) {
+        case ENGINE_TYPE_MCTS_UCB1:
+            engine_mcts_ucb1_get_stats(engine->internal_state, out_stats);
+            break;
+        case ENGINE_TYPE_MCTS_PUCT:
+            engine_mcts_puct_get_stats(engine->internal_state, out_stats);
+            break;
+        case ENGINE_TYPE_CHECKERBOARD:
+        case ENGINE_TYPE_KINGSROW:
+        case ENGINE_TYPE_RANDOM:
+        default:
+            out_stats->is_valid = false;
+            break;
+    }
+}

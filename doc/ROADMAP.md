@@ -23,7 +23,7 @@ While the core board representation (128-bit bitboard), move generator (FID 4-ti
 | **Zobrist Hashing / Transposition** | ✅ Compliant | Implemented 64-bit Zobrist hashing & Transposition Table. |
 | **Heuristic / Biased Rollouts** | ✅ Compliant | Zero-allocation $\epsilon$-greedy rollout policy with FID heuristics. |
 | **Headless Tournament CLI** | ✅ Compliant | Full CLI mode for matches, round-robin tournaments, benchmarks. |
-| **Principled Parameter Tuning** | ❌ Missing | Implement automated hyperparameter tuning (GA / Round-Robin). |
+| **Principled Parameter Tuning** | ✅ Compliant (Genetic Algorithm) | Automated GA tuning framework with ODB & WLD support. |
 | **Experimental Data Export** | ✅ Compliant | Automatic CSV export for matches, tournaments, and benchmarks. |
 
 ---
@@ -41,7 +41,7 @@ The following sections are organized in strict chronological order of execution.
            ↓
 [Phase 4: Headless CLI & Tournament Runner] ✅ Completed
            ↓
-[Phase 5: Automated Hyperparameter Tuning Engine]
+[Phase 5: Automated Hyperparameter Tuning Engine] ✅ Completed
            ↓
 [Phase 6: UI Profile & Model Selector Alignment]
            ↓
@@ -146,42 +146,59 @@ Implemented dedicated CLI module in `src/cli.h` and `src/cli.c`, integrated into
 
 ---
 
-### Phase 5: Principled Hyperparameter Tuning
+### Phase 5: Principled Hyperparameter Tuning (Genetic Algorithm Engine) ✅ COMPLETED
 
-Automated parameter tuning framework to systematically optimize engine parameters using low time budgets ($0.2\text{s}$).
+Automated parameter tuning framework to systematically optimize engine hyperparameters across classical MCTS UCB1, MCTS PUCT, Opening Book sampling, and WLD tablebases using fast time budgets ($0.2\text{s}$).
 
-#### 5.1 Tunable Parameters
+#### 5.1 Tunable Chromosome Parameters
 | Parameter | Range | Target Model | Description |
 | :--- | :--- | :--- | :--- |
-| $\alpha$ (Exploration) | $[0.2, 3.0]$ | UCB1 | Exploration-exploitation trade-off constant. |
+| $\alpha$ (Exploration) | $[0.2, 3.0]$ | UCB1 | UCB1 Exploration-exploitation trade-off constant. |
 | $c_{\text{puct}}$ | $[0.5, 3.5]$ | PUCT | Predictor confidence scaling factor. |
-| $\tau$ (Temperature) | $[0.1, 2.0]$ | PUCT | Prior probability distribution sharpness. |
-| $\epsilon_{\text{rollout}}$ | $[0.05, 0.40]$ | Rollout | Exploration rate in biased simulations. |
+| $\tau$ (Temperature) | $[0.1, 2.5]$ | PUCT | Softmax prior probability distribution sharpness. |
+| $\epsilon_{\text{rollout}}$ | $[0.02, 0.50]$ | Both | Exploration rate in biased heuristic simulations. |
 | `max_rollout_depth` | $[20, 150]$ | Both | Simulation truncation depth limit. |
+| $\tau_{\text{book}}$ (Book Temp) | $[0.1, 3.0]$ | Both | Softmax temperature for opening book move sampling. |
+| `book_mode` | Categorical | Both | Selection mode (`BEST`, `GOOD`, `PUCT_GUIDED`, `ALL`, `OFF`). |
+| `use_book` | Boolean | Both | Toggle opening book lookup during search. |
+| `use_db` | Boolean | Both | Toggle WLD endgame tablebase solving. |
 
-#### 5.2 Tuning Algorithm
-Implement **Genetic Algorithm (GA)** or **Round-Robin Iterative Selection**:
-1. Initialize population of $N=16$ parameter vectors.
-2. Run round-robin tournament matches at $0.2\text{s}$ per move.
-3. Rank by Bayes-Elo / win-rate.
-4. Apply crossover, mutation, and selection across generations until convergence.
+#### 5.2 Genetic Algorithm Mechanics (`src/tune_ga.h`, `src/tune_ga.c`)
+1. **Population Initialization**: Size $N=16$ (configurable). Individual 0 is seeded with baseline default parameters; remaining individuals are randomly initialized within bounded parameter domains.
+2. **Fitness Evaluation via Tournament**:
+   - Each individual plays a round-robin tournament across pairings with alternating White/Black colors and 2-ply randomized openings for move diversity.
+   - Points awarded: Win = $1.0$, Draw = $0.5$, Loss = $0.0$.
+   - Fitness metric: Bayes-Elo estimation with win margin bonus and execution speed penalty.
+3. **Elitism & Selection**:
+   - Preserves top $E$ elite individuals (default $2$) across generations without perturbation.
+   - Tournament selection ($k=2$) for parent reproduction.
+4. **Crossover & Mutation**:
+   - Arithmetic blend crossover (BLX-$\alpha$) for continuous parameters and discrete uniform crossover for categorical/boolean flags.
+   - Gaussian/uniform perturbation with parameter clamping and mutation rate $p_m \approx 0.20$.
+5. **CLI & Automation**:
+   - Integrated into CLI via `--tune` / `--tune-ga` with automated CSV export and C preset generator.
+   - Verified via unit test suite in `tests/test_tune_ga.c`.
 
 ---
 
-### Phase 6: GUI Profile & Engine Configuration Alignment
+### Phase 6: GUI Profile & Engine Configuration Alignment ✅ COMPLETED
 
-Align the graphical interface with exact project specifications:
-1. **Three Profile Buttons**:
-   - `Fast`: $0.2\text{s}$
-   - `Medium`: $1.0\text{s}$
-   - `Slow`: $3.0\text{s}$
-2. **Engine Selectors**:
-   - `MCTS UCB1`
-   - `MCTS PUCT`
-   - `CheckerBoard (Martin Fierz)`
-   - `Kingsrow (Bridge/IPC)`
-   - `Random Player`
-3. **Real-time HUD**: Display last thinking time, node pool utilization, iterations/sec, and win rate.
+Aligned graphical interface with responsive asynchronous engine integration and precision parameter configuration:
+1. **Centralized Time Controls & Keyboard Entry**:
+   - Removed redundant top-level time buttons from main menu; centralized all time controls within "Impostazioni Dettagliate Motori".
+   - Preset Stepper (`-` / `+`) dynamically cycles through standard profiles:
+     - `Fast`: $0.20\text{s}$
+     - `Medium`: $1.00\text{s}$
+     - `Slow`: $3.00\text{s}$
+   - Interactive inline numeric keyboard input: clicking on time value boxes enables direct typing of custom floating-point seconds with blinking cursor and Enter/Escape support.
+2. **Dropdown Engine Selectors**:
+   - Replaced cycling buttons with dropdown modal dialogs featuring radio-style selectors for 1P mode (Opponent Engine) and CPU vs CPU mode (White Engine / Black Engine).
+3. **Asynchronous Background Worker & Non-Blocking GUI**:
+   - Engine search runs asynchronously on a dedicated worker thread (`AIWorker`), keeping GLFW/OpenGL rendering at a steady 60 FPS.
+   - Moving or resizing the window no longer freezes the AI or rendering loop.
+   - Instant UI responsiveness: clicking `MENU` or `MOTORI` sends immediate atomic cancellation flags (`engine_request_stop()`) to halt background computation cleanly without freezing.
+4. **Live In-Game HUD**:
+   - Displays real-time thinking time (`CALCOLO (1.2s)...`), node pool utilization (`POOL: 142k (14.2%)`), throughput (`950k/s`), win rate (`WIN: 58%`), and last move latency.
 
 ---
 

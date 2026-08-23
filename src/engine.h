@@ -65,10 +65,26 @@ void engine_config_set_time_profile(EngineConfig *cfg, TimeProfile profile);
 TimeProfile engine_config_get_time_profile(const EngineConfig *cfg);
 void engine_apply_config(Engine *engine, EngineType type, const EngineConfig *cfg);
 
+typedef struct {
+    double last_time;       // Seconds taken in last search
+    uint32_t nodes_used;    // Node pool allocated count
+    uint32_t nodes_max;     // Max nodes capacity (e.g. 2000000)
+    uint32_t iterations;    // Total simulations in last search
+    double iterations_sec;  // Iterations / sec
+    float win_rate;         // Win rate (0.0 to 1.0)
+    bool is_valid;          // True if valid statistics
+} EngineStats;
+
 // Engine & Wine availability checks
 bool engine_is_wine_available(void);
 bool engine_is_type_available(EngineType type);
 const char *engine_get_type_name(EngineType type);
+
+// Engine live statistics and cancellation control
+void engine_get_stats(const Engine *engine, EngineType type, EngineStats *out_stats);
+void engine_request_stop(void);
+void engine_reset_stop(void);
+bool engine_is_stop_requested(void);
 
 #endif // ENGINE_H
 

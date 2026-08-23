@@ -3,6 +3,7 @@
 
 #include "game.h"
 #include "engine.h"
+#include "tune_ga.h"
 #include <stdbool.h>
 
 typedef enum {
@@ -13,7 +14,8 @@ typedef enum {
     CLI_MODE_BENCH,
     CLI_MODE_TEST_ENDGAMES,
     CLI_MODE_TEST_OPENING_BOOK,
-    CLI_MODE_TEST_OPENING_TOURNAMENT
+    CLI_MODE_TEST_OPENING_TOURNAMENT,
+    CLI_MODE_TUNE_GA
 } CliMode;
 
 typedef struct {
@@ -50,6 +52,9 @@ typedef struct {
     bool       has_black_book_override;
     bool       black_use_book;
     BookPlayMode black_book_mode;
+
+    // GA Tuning Options
+    GAConfig   ga_config;
 
     // Output & logging
     char       csv_path[256];

@@ -1,9 +1,12 @@
 #include "ui.h"
 #include "engine.h"
 #include <glad/glad.h>
+#include <GLFW/glfw3.h>
 #include <cglm/cglm.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 // 2D Vertex Format: Position (2), Color (4), UV (2), UseTex (1)
 typedef struct {
@@ -268,29 +271,27 @@ static void ui_end_and_draw(GLuint ui_shader, int win_w, int win_h) {
     glEnable(GL_DEPTH_TEST);
 }
 
-static const double s_mcts_time_budgets[] = { 0.20, 0.50, 1.00, 2.00, 3.00, 5.00, 10.00 };
-static const float  s_mcts_alphas[]       = { 0.50f, 0.80f, 1.00f, 1.4142f, 1.80f, 2.20f, 2.80f };
-static const int    s_mcts_depths[]       = { 20, 35, 50, 70, 100, 150, 200 };
-static const float  s_mcts_epsilons[]     = { 0.05f, 0.10f, 0.15f, 0.20f, 0.30f, 0.40f, 1.00f };
-static const double s_puct_time_budgets[] = { 0.20, 0.50, 1.00, 2.00, 3.00, 5.00, 10.00 };
-static const float  s_puct_c_pucts[]      = { 0.50f, 0.80f, 1.00f, 1.50f, 2.00f, 2.50f, 3.50f };
-static const float  s_puct_temperatures[] = { 0.20f, 0.50f, 0.80f, 1.00f, 1.20f, 1.50f, 2.00f };
-static const int    s_puct_depths[]       = { 20, 35, 50, 70, 100, 150, 200 };
-static const double s_cb_times[]          = { 0.20, 0.50, 1.00, 2.00, 3.00, 5.00, 10.00 };
-static const double s_kr_times[]          = { 0.20, 0.50, 1.00, 2.00, 3.00, 5.00, 10.00 };
+static const double s_time_presets[] = { 0.20, 1.00, 3.00 };
 
-static void step_double_val(double *val, const double *arr, int count, int delta) {
-    int cur_idx = 0;
+static void step_time_preset(double *val, int delta) {
+    int cur_idx = 1;
     double best_diff = 1e9;
-    for (int i = 0; i < count; i++) {
-        double d = (*val > arr[i]) ? (*val - arr[i]) : (arr[i] - *val);
+    for (int i = 0; i < 3; i++) {
+        double d = fabs(*val - s_time_presets[i]);
         if (d < best_diff) { best_diff = d; cur_idx = i; }
     }
     int new_idx = cur_idx + delta;
     if (new_idx < 0) new_idx = 0;
-    if (new_idx >= count) new_idx = count - 1;
-    *val = arr[new_idx];
+    if (new_idx >= 3) new_idx = 2;
+    *val = s_time_presets[new_idx];
 }
+
+static const float  s_mcts_alphas[]       = { 0.50f, 0.80f, 1.00f, 1.4142f, 1.80f, 2.20f, 2.80f };
+static const int    s_mcts_depths[]       = { 20, 35, 50, 70, 100, 150, 200 };
+static const float  s_mcts_epsilons[]     = { 0.05f, 0.10f, 0.15f, 0.20f, 0.30f, 0.40f, 1.00f };
+static const float  s_puct_c_pucts[]      = { 0.50f, 0.80f, 1.00f, 1.50f, 2.00f, 2.50f, 3.50f };
+static const float  s_puct_temperatures[] = { 0.20f, 0.50f, 0.80f, 1.00f, 1.20f, 1.50f, 2.00f };
+static const int    s_puct_depths[]       = { 20, 35, 50, 70, 100, 150, 200 };
 
 static void step_float_val(float *val, const float *arr, int count, int delta) {
     int cur_idx = 0;
@@ -324,10 +325,29 @@ void ui_init(UIContext *ui) {
     ui->settings_tab = 0;
     ui->selected_mode = MODE_2PLAYER;
     ui->selected_human_color = PLAYER_WHITE;
-    ui->selected_white_engine = ENGINE_TYPE_RANDOM;
-    ui->selected_black_engine = ENGINE_TYPE_RANDOM;
+    ui->selected_white_engine = ENGINE_TYPE_MCTS_UCB1;
+    ui->selected_black_engine = ENGINE_TYPE_MCTS_PUCT;
     ui->win_w = 1024;
     ui->win_h = 768;
+
+    ui->engine_dropdown_open = false;
+    ui->dropdown_target_slot = 0;
+    ui->dropdown_x = 0;
+    ui->dropdown_y = 0;
+    ui->dropdown_w = 0;
+    ui->dropdown_h = 0;
+
+    ui->editing_time_input = false;
+    ui->editing_tab = 0;
+    ui->time_input_buf[0] = '\0';
+    ui->time_input_len = 0;
+    ui->editing_original_val = 1.0;
+
+    memset(&ui->white_stats, 0, sizeof(EngineStats));
+    memset(&ui->black_stats, 0, sizeof(EngineStats));
+    ui->is_thinking = false;
+    ui->thinking_start_time = 0.0;
+    ui->thinking_player = PLAYER_WHITE;
     
     ui->last_white_ai_time = 0.0;
     ui->last_black_ai_time = 0.0;
@@ -352,6 +372,23 @@ static bool point_in_rect(double px, double py, float rx, float ry, float rw, fl
     return px >= rx && px <= (rx + rw) && py >= ry && py <= (ry + rh);
 }
 
+// Engine ordered list for dropdown selection
+static const EngineType s_dropdown_engines[5] = {
+    ENGINE_TYPE_MCTS_PUCT,
+    ENGINE_TYPE_MCTS_UCB1,
+    ENGINE_TYPE_CHECKERBOARD,
+    ENGINE_TYPE_KINGSROW,
+    ENGINE_TYPE_RANDOM
+};
+
+static const char *s_dropdown_labels[5] = {
+    "MCTS PUCT (AlphaGo + Heuristic Prior)",
+    "MCTS UCB1 (Monte Carlo Tree Search)",
+    "CheckerBoard (Martin Fierz Minimax)",
+    "Kingsrow (World Champion 10-Piece DB)",
+    "Random Player (Mosse Casuali)"
+};
+
 void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
     ui_begin();
     
@@ -360,11 +397,14 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
     vec4 backdrop_overlay= { 0.02f, 0.04f, 0.08f, 0.75f }; // Full screen dark dim
     vec4 glass_panel     = { 0.08f, 0.12f, 0.18f, 0.95f }; // Solid dark card
     vec4 border_color    = { 0.35f, 0.55f, 0.85f, 0.80f }; // Vibrant blue glow border
+    vec4 border_gold     = { 1.00f, 0.82f, 0.20f, 0.90f }; // Gold border
     vec4 btn_normal      = { 0.15f, 0.22f, 0.35f, 0.95f };
     vec4 btn_active      = { 0.22f, 0.50f, 0.90f, 1.00f };
     vec4 btn_start       = { 0.12f, 0.68f, 0.38f, 1.00f };
     vec4 btn_danger      = { 0.75f, 0.20f, 0.20f, 0.95f };
     vec4 btn_stepper     = { 0.18f, 0.28f, 0.44f, 0.95f };
+    vec4 btn_dropdown    = { 0.12f, 0.18f, 0.28f, 0.98f };
+    vec4 btn_editing     = { 0.20f, 0.35f, 0.55f, 1.00f };
     
     vec4 text_white      = { 1.00f, 1.00f, 1.00f, 1.00f };
     vec4 text_gold       = { 1.00f, 0.82f, 0.20f, 1.00f };
@@ -378,7 +418,7 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
         
         // 2. Main Menu Card (Center of screen)
         float p_w = 560.0f * S;
-        float p_h = 515.0f * S;
+        float p_h = 440.0f * S;
         float p_x = ((float)ui->win_w - p_w) * 0.5f;
         float p_y = ((float)ui->win_h - p_h) * 0.5f;
         
@@ -387,17 +427,17 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
         ui_add_quad(p_x, p_y, p_w, p_h, glass_panel);
         
         // Title Header
-        ui_add_text_centered("DAMASCUS", p_x + p_w * 0.5f, p_y + 32.0f * S, 2.5f * S, text_gold);
-        ui_add_text_centered("DAMA ITALIANA 3D", p_x + p_w * 0.5f, p_y + 58.0f * S, 1.3f * S, text_sub);
+        ui_add_text_centered("DAMASCUS", p_x + p_w * 0.5f, p_y + 30.0f * S, 2.5f * S, text_gold);
+        ui_add_text_centered("DAMA ITALIANA 3D", p_x + p_w * 0.5f, p_y + 56.0f * S, 1.3f * S, text_sub);
         
         // Mode Selection Header
-        ui_add_text("SELEZIONA MODALITA DI GIOCO:", p_x + 35.0f * S, p_y + 88.0f * S, 1.05f * S, text_white);
+        ui_add_text("SELEZIONA MODALITA DI GIOCO:", p_x + 35.0f * S, p_y + 84.0f * S, 1.05f * S, text_white);
         
         // Mode Selection Buttons
         float btn_w = 150.0f * S;
         float btn_h = 38.0f * S;
         float start_x = p_x + 35.0f * S;
-        float btn_y = p_y + 108.0f * S;
+        float btn_y = p_y + 104.0f * S;
         
         // 2 Player Button
         vec4 *c1 = (ui->selected_mode == MODE_2PLAYER) ? &btn_active : &btn_normal;
@@ -415,7 +455,7 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
         ui_add_text_centered("CPU VS CPU", start_x + 330.0f * S + btn_w * 0.5f, btn_y + btn_h * 0.5f, 1.0f * S, text_white);
         
         // Engine / Color Selection Boxes
-        float eng_y = p_y + 158.0f * S;
+        float eng_y = p_y + 154.0f * S;
         if (ui->selected_mode == MODE_1PLAYER) {
             ui_add_text("SELEZIONA IL TUO COLORE:", start_x, eng_y, 1.05f * S, text_white);
             
@@ -430,59 +470,83 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             ui_add_text_centered("GIOCA COME NERO", start_x + 245.0f * S + col_btn_w * 0.5f, eng_y + 35.0f * S, 1.0f * S, text_white);
             
             char cpu_str[128];
-            snprintf(cpu_str, sizeof(cpu_str), "ENGINE CPU: %s", engine_get_type_name(ui->selected_black_engine));
-            ui_add_quad(start_x, eng_y + 58.0f * S, 480.0f * S, 34.0f * S, btn_normal);
-            ui_add_text_centered(cpu_str, start_x + 240.0f * S, eng_y + 75.0f * S, 1.05f * S, text_gold);
+            snprintf(cpu_str, sizeof(cpu_str), "ENGINE AVVERSARIO: %s   [SELEZIONA v]", engine_get_type_name(ui->selected_black_engine));
+            ui_add_quad(start_x - 1.0f * S, eng_y + 57.0f * S, 482.0f * S, 38.0f * S, border_color);
+            ui_add_quad(start_x, eng_y + 58.0f * S, 480.0f * S, 36.0f * S, btn_dropdown);
+            ui_add_text_centered(cpu_str, start_x + 240.0f * S, eng_y + 76.0f * S, 1.05f * S, text_gold);
         } else if (ui->selected_mode == MODE_CPUVSCPU) {
             ui_add_text("SELEZIONA ENGINE CPU:", start_x, eng_y, 1.05f * S, text_white);
             
             char e1_str[64], e2_str[64];
-            snprintf(e1_str, sizeof(e1_str), "CPU 1: %s", engine_get_type_name(ui->selected_white_engine));
-            snprintf(e2_str, sizeof(e2_str), "CPU 2: %s", engine_get_type_name(ui->selected_black_engine));
+            snprintf(e1_str, sizeof(e1_str), "CPU 1: %s  [v]", engine_get_type_name(ui->selected_white_engine));
+            snprintf(e2_str, sizeof(e2_str), "CPU 2: %s  [v]", engine_get_type_name(ui->selected_black_engine));
             
-            ui_add_quad(start_x, eng_y + 18.0f * S, 235.0f * S, 34.0f * S, btn_normal);
-            ui_add_text_centered(e1_str, start_x + 117.0f * S, eng_y + 35.0f * S, 1.0f * S, text_gold);
+            ui_add_quad(start_x, eng_y + 18.0f * S, 235.0f * S, 36.0f * S, btn_dropdown);
+            ui_add_text_centered(e1_str, start_x + 117.0f * S, eng_y + 36.0f * S, 0.95f * S, text_gold);
             
-            ui_add_quad(start_x + 245.0f * S, eng_y + 18.0f * S, 235.0f * S, 34.0f * S, btn_normal);
-            ui_add_text_centered(e2_str, start_x + 245.0f * S + 117.0f * S, eng_y + 35.0f * S, 1.0f * S, text_gold);
+            ui_add_quad(start_x + 245.0f * S, eng_y + 18.0f * S, 235.0f * S, 36.0f * S, btn_dropdown);
+            ui_add_text_centered(e2_str, start_x + 245.0f * S + 117.0f * S, eng_y + 36.0f * S, 0.95f * S, text_gold);
         }
 
-        // Thinking Time Profiles (Fast 0.2s | Medium 1.0s | Slow 3.0s)
-        float prof_y = p_y + 260.0f * S;
-        ui_add_text("PROFILO TEMPO DI RIFLESSIONE (THINKING TIME):", start_x, prof_y, 1.05f * S, text_white);
-
-        TimeProfile cur_prof = engine_config_get_time_profile(&ui->engine_config);
-        vec4 *p_fast   = (cur_prof == TIME_PROFILE_FAST)   ? &btn_active : &btn_normal;
-        vec4 *p_medium = (cur_prof == TIME_PROFILE_MEDIUM) ? &btn_active : &btn_normal;
-        vec4 *p_slow   = (cur_prof == TIME_PROFILE_SLOW)   ? &btn_active : &btn_normal;
-
-        float prof_btn_y = prof_y + 20.0f * S;
-        float prof_btn_w = 150.0f * S;
-        float prof_btn_h = 35.0f * S;
-
-        ui_add_quad(start_x, prof_btn_y, prof_btn_w, prof_btn_h, *p_fast);
-        ui_add_text_centered("FAST (0.2s)", start_x + prof_btn_w * 0.5f, prof_btn_y + prof_btn_h * 0.5f, 1.0f * S, text_white);
-
-        ui_add_quad(start_x + 165.0f * S, prof_btn_y, prof_btn_w, prof_btn_h, *p_medium);
-        ui_add_text_centered("MEDIUM (1.0s)", start_x + 165.0f * S + prof_btn_w * 0.5f, prof_btn_y + prof_btn_h * 0.5f, 1.0f * S, text_white);
-
-        ui_add_quad(start_x + 330.0f * S, prof_btn_y, prof_btn_w, prof_btn_h, *p_slow);
-        ui_add_text_centered("SLOW (3.0s)", start_x + 330.0f * S + prof_btn_w * 0.5f, prof_btn_y + prof_btn_h * 0.5f, 1.0f * S, text_white);
-        
         // Engine detailed settings button
-        float cfg_btn_y = p_y + 332.0f * S;
+        float cfg_btn_y = p_y + 265.0f * S;
         float cfg_btn_w = 480.0f * S;
-        ui_add_quad(start_x, cfg_btn_y, cfg_btn_w, 36.0f * S, btn_stepper);
-        ui_add_text_centered("IMPOSTAZIONI DETTAGLIATE MOTORI", start_x + cfg_btn_w * 0.5f, cfg_btn_y + 18.0f * S, 1.05f * S, text_gold);
+        ui_add_quad(start_x, cfg_btn_y, cfg_btn_w, 38.0f * S, btn_stepper);
+        ui_add_text_centered("IMPOSTAZIONI DETTAGLIATE MOTORI", start_x + cfg_btn_w * 0.5f, cfg_btn_y + 19.0f * S, 1.05f * S, text_gold);
         
         // Start Game Button
-        float start_btn_y = p_y + 385.0f * S;
+        float start_btn_y = p_y + 320.0f * S;
         float start_btn_w = 340.0f * S;
         float start_btn_h = 52.0f * S;
         float start_btn_x = p_x + (p_w - start_btn_w) * 0.5f;
         
         ui_add_quad(start_btn_x, start_btn_y, start_btn_w, start_btn_h, btn_start);
         ui_add_text_centered("INIZIA PARTITA", start_btn_x + start_btn_w * 0.5f, start_btn_y + start_btn_h * 0.5f, 1.7f * S, text_white);
+
+        // Render Engine Selection Dropdown Menu if open
+        if (ui->engine_dropdown_open) {
+            float dd_w = 500.0f * S;
+            float dd_h = 225.0f * S;
+            float dd_x = ((float)ui->win_w - dd_w) * 0.5f;
+            float dd_y = p_y + 120.0f * S;
+
+            ui->dropdown_x = dd_x;
+            ui->dropdown_y = dd_y;
+            ui->dropdown_w = dd_w;
+            ui->dropdown_h = dd_h;
+
+            ui_add_quad(dd_x - 3.0f * S, dd_y - 3.0f * S, dd_w + 6.0f * S, dd_h + 6.0f * S, border_gold);
+            ui_add_quad(dd_x, dd_y, dd_w, dd_h, glass_panel);
+
+            const char *target_title = (ui->dropdown_target_slot == 0) ? "SELEZIONA MOTORE CPU 1" : "SELEZIONA MOTORE CPU 2";
+            ui_add_text_centered(target_title, dd_x + dd_w * 0.5f, dd_y + 16.0f * S, 1.15f * S, text_gold);
+
+            EngineType active_target = (ui->dropdown_target_slot == 0) ? 
+                ((ui->selected_mode == MODE_1PLAYER) ? ui->selected_black_engine : ui->selected_white_engine) :
+                ui->selected_black_engine;
+
+            float item_y = dd_y + 34.0f * S;
+            float item_h = 34.0f * S;
+            float item_w = dd_w - 20.0f * S;
+
+            for (int e = 0; e < 5; e++) {
+                EngineType et = s_dropdown_engines[e];
+                bool is_sel = (et == active_target);
+                bool avail = engine_is_type_available(et);
+
+                vec4 *bg_c = is_sel ? &btn_active : &btn_normal;
+                ui_add_quad(dd_x + 10.0f * S, item_y, item_w, item_h, *bg_c);
+
+                char radio_line[128];
+                const char *r_symbol = is_sel ? "(*)" : "( )";
+                snprintf(radio_line, sizeof(radio_line), "%s %s", r_symbol, s_dropdown_labels[e]);
+
+                vec4 *txt_c = !avail ? &text_red : (is_sel ? &text_white : &text_sub);
+                ui_add_text(radio_line, dd_x + 20.0f * S, item_y + 11.0f * S, 0.95f * S, *txt_c);
+
+                item_y += 37.0f * S;
+            }
+        }
         
     } else if (ui->state == UI_STATE_ENGINE_SETTINGS) {
         // Fullscreen Dimmed Backdrop
@@ -524,21 +588,28 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
         ui_add_text_centered("KINGSROW", s_x + 500.0f * S + tab_w * 0.5f, tab_y + tab_h * 0.5f, 1.0f * S, text_white);
         
         // Tab Content
+        float row_x = s_x + 40.0f * S;
+        float step_x = s_x + 450.0f * S;
+
         if (ui->settings_tab == 0) {
             // Tab 0: MCTS UCB1
-            float row_x = s_x + 40.0f * S;
-            float step_x = s_x + 450.0f * S;
-            
-            // Parameter 1: Time budget
             float r1_y = s_y + 90.0f * S;
-            ui_add_text("TEMPO DI RICERCA (TIME BUDGET):", row_x, r1_y + 8.0f * S, 1.05f * S, text_white);
+            ui_add_text("TEMPO DI RICERCA (PRESET / TASTIERA):", row_x, r1_y + 8.0f * S, 1.00f * S, text_white);
             ui_add_quad(step_x, r1_y, 40.0f * S, 28.0f * S, btn_stepper);
             ui_add_text_centered("-", step_x + 20.0f * S, r1_y + 13.0f * S, 1.5f * S, text_white);
             
             char val1[32];
-            snprintf(val1, sizeof(val1), "%.2fs", ui->engine_config.mcts_time_budget);
-            ui_add_quad(step_x + 45.0f * S, r1_y, 95.0f * S, 28.0f * S, btn_normal);
-            ui_add_text_centered(val1, step_x + 92.0f * S, r1_y + 13.0f * S, 1.05f * S, text_gold);
+            bool is_edit1 = (ui->editing_time_input && ui->editing_tab == 0);
+            if (is_edit1) {
+                snprintf(val1, sizeof(val1), "%s%s", ui->time_input_buf, (fmod(glfwGetTime(), 0.8) < 0.4 ? "_" : ""));
+                ui_add_quad(step_x + 44.0f * S, r1_y - 1.0f * S, 97.0f * S, 30.0f * S, border_gold);
+                ui_add_quad(step_x + 45.0f * S, r1_y, 95.0f * S, 28.0f * S, btn_editing);
+                ui_add_text_centered(val1, step_x + 92.0f * S, r1_y + 13.0f * S, 1.05f * S, text_white);
+            } else {
+                snprintf(val1, sizeof(val1), "%.2fs", ui->engine_config.mcts_time_budget);
+                ui_add_quad(step_x + 45.0f * S, r1_y, 95.0f * S, 28.0f * S, btn_normal);
+                ui_add_text_centered(val1, step_x + 92.0f * S, r1_y + 13.0f * S, 1.05f * S, text_gold);
+            }
             
             ui_add_quad(step_x + 145.0f * S, r1_y, 40.0f * S, 28.0f * S, btn_stepper);
             ui_add_text_centered("+", step_x + 165.0f * S, r1_y + 13.0f * S, 1.5f * S, text_white);
@@ -631,7 +702,6 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             ui_add_quad(step_x - 40.0f * S, r6_y, bk_btn_w, 28.0f * S, *db_btn_c0);
             ui_add_text_centered(db_str0, step_x - 40.0f * S + bk_btn_w * 0.5f, r6_y + 14.0f * S, 0.90f * S, text_white);
             
-            // Real-time backend status text
             vec4 *st_col0 = st0.available ? (ui->engine_config.wld_backend == WLD_BACKEND_NONE ? &text_sub : &text_green) : &text_red;
             ui_add_text(st0.status_message, row_x, r6_y + 28.0f * S, 0.85f * S, *st_col0);
  
@@ -644,25 +714,32 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             ui_add_quad(step_x, r7_y, 185.0f * S, 28.0f * S, *log_btn_c);
             ui_add_text_centered(log_str, step_x + 92.0f * S, r7_y + 14.0f * S, 1.0f * S, text_white);
             
-            // Info text
-            ui_add_text("MCTS UCB1 combina esplorazione/sfruttamento e rollout euristici tattici.", row_x, s_y + 368.0f * S, 0.95f * S, text_sub);
+            if (is_edit1) {
+                ui_add_text("[EDIT TASTIERA: DIGITA IL VALORE IN SECONDI, INVIO=SALVA, ESC=ANNULLA]", row_x, s_y + 368.0f * S, 0.95f * S, text_gold);
+            } else {
+                ui_add_text("MCTS UCB1 combina esplorazione/sfruttamento e rollout euristici tattici.", row_x, s_y + 368.0f * S, 0.95f * S, text_sub);
+            }
             ui_add_text("Il libro di apertura guida l'albero con seed di visite e mosse immediate.", row_x, s_y + 392.0f * S, 0.95f * S, text_sub);
  
         } else if (ui->settings_tab == 1) {
             // Tab 1: MCTS PUCT
-            float row_x = s_x + 40.0f * S;
-            float step_x = s_x + 450.0f * S;
-            
-            // Parameter 1: Time budget
             float r1_y = s_y + 86.0f * S;
-            ui_add_text("TEMPO DI RICERCA (TIME BUDGET):", row_x, r1_y + 7.0f * S, 1.05f * S, text_white);
+            ui_add_text("TEMPO DI RICERCA (PRESET / TASTIERA):", row_x, r1_y + 7.0f * S, 1.00f * S, text_white);
             ui_add_quad(step_x, r1_y, 40.0f * S, 26.0f * S, btn_stepper);
             ui_add_text_centered("-", step_x + 20.0f * S, r1_y + 12.0f * S, 1.5f * S, text_white);
             
             char val1[32];
-            snprintf(val1, sizeof(val1), "%.2fs", ui->engine_config.puct_time_budget);
-            ui_add_quad(step_x + 45.0f * S, r1_y, 95.0f * S, 26.0f * S, btn_normal);
-            ui_add_text_centered(val1, step_x + 92.0f * S, r1_y + 12.0f * S, 1.05f * S, text_gold);
+            bool is_edit1 = (ui->editing_time_input && ui->editing_tab == 1);
+            if (is_edit1) {
+                snprintf(val1, sizeof(val1), "%s%s", ui->time_input_buf, (fmod(glfwGetTime(), 0.8) < 0.4 ? "_" : ""));
+                ui_add_quad(step_x + 44.0f * S, r1_y - 1.0f * S, 97.0f * S, 28.0f * S, border_gold);
+                ui_add_quad(step_x + 45.0f * S, r1_y, 95.0f * S, 26.0f * S, btn_editing);
+                ui_add_text_centered(val1, step_x + 92.0f * S, r1_y + 12.0f * S, 1.05f * S, text_white);
+            } else {
+                snprintf(val1, sizeof(val1), "%.2fs", ui->engine_config.puct_time_budget);
+                ui_add_quad(step_x + 45.0f * S, r1_y, 95.0f * S, 26.0f * S, btn_normal);
+                ui_add_text_centered(val1, step_x + 92.0f * S, r1_y + 12.0f * S, 1.05f * S, text_gold);
+            }
             
             ui_add_quad(step_x + 145.0f * S, r1_y, 40.0f * S, 26.0f * S, btn_stepper);
             ui_add_text_centered("+", step_x + 165.0f * S, r1_y + 12.0f * S, 1.5f * S, text_white);
@@ -753,7 +830,7 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
                 ui_add_text("[LIBRO APERTURE: DISATTIVATO]", row_x, r6_y + 26.0f * S, 0.85f * S, text_sub);
             }
 
-            // Parameter 7: Endgame database backend selector
+            // Parameter 7: Database backend selector
             float r7_y = s_y + 268.0f * S;
             ui_add_text("DATABASE FINALI (WLD TABLEBASE):", row_x, r7_y + 7.0f * S, 1.05f * S, text_white);
             
@@ -769,7 +846,6 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             ui_add_quad(step_x - 40.0f * S, r7_y, bk_btn_w1, 26.0f * S, *db_btn_c1);
             ui_add_text_centered(db_str1, step_x - 40.0f * S + bk_btn_w1 * 0.5f, r7_y + 13.0f * S, 0.90f * S, text_white);
             
-            // Real-time backend status text
             vec4 *st_col1 = st1.available ? (ui->engine_config.wld_backend == WLD_BACKEND_NONE ? &text_sub : &text_green) : &text_red;
             ui_add_text(st1.status_message, row_x, r7_y + 26.0f * S, 0.85f * S, *st_col1);
  
@@ -782,24 +858,32 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             ui_add_quad(step_x, r8_y, 185.0f * S, 26.0f * S, *log_btn_c1);
             ui_add_text_centered(log_str1, step_x + 92.0f * S, r8_y + 13.0f * S, 1.0f * S, text_white);
             
-            // Info text
-            ui_add_text("MCTS PUCT integra prior da euristica veloce FID e ricerca AlphaGo-style.", row_x, s_y + 368.0f * S, 0.95f * S, text_sub);
+            if (is_edit1) {
+                ui_add_text("[EDIT TASTIERA: DIGITA IL VALORE IN SECONDI, INVIO=SALVA, ESC=ANNULLA]", row_x, s_y + 368.0f * S, 0.95f * S, text_gold);
+            } else {
+                ui_add_text("MCTS PUCT integra prior da euristica veloce FID e ricerca AlphaGo-style.", row_x, s_y + 368.0f * S, 0.95f * S, text_sub);
+            }
             ui_add_text("Il libro di apertura fonde la distribuzione teorica nei prior PUCT.", row_x, s_y + 392.0f * S, 0.95f * S, text_sub);
  
         } else if (ui->settings_tab == 2) {
             // Tab 2: CHECKERBOARD
-            float row_x = s_x + 40.0f * S;
-            float step_x = s_x + 450.0f * S;
-            
             float r1_y = s_y + 130.0f * S;
-            ui_add_text("TEMPO DI RICERCA (SECONDI):", row_x, r1_y + 10.0f * S, 1.1f * S, text_white);
+            ui_add_text("TEMPO DI RICERCA (PRESET / TASTIERA):", row_x, r1_y + 10.0f * S, 1.05f * S, text_white);
             ui_add_quad(step_x, r1_y, 40.0f * S, 35.0f * S, btn_stepper);
             ui_add_text_centered("-", step_x + 20.0f * S, r1_y + 17.0f * S, 1.5f * S, text_white);
             
             char val1[32];
-            snprintf(val1, sizeof(val1), "%.2fs", ui->engine_config.cb_search_time);
-            ui_add_quad(step_x + 45.0f * S, r1_y, 95.0f * S, 35.0f * S, btn_normal);
-            ui_add_text_centered(val1, step_x + 92.0f * S, r1_y + 17.0f * S, 1.1f * S, text_gold);
+            bool is_edit2 = (ui->editing_time_input && ui->editing_tab == 2);
+            if (is_edit2) {
+                snprintf(val1, sizeof(val1), "%s%s", ui->time_input_buf, (fmod(glfwGetTime(), 0.8) < 0.4 ? "_" : ""));
+                ui_add_quad(step_x + 44.0f * S, r1_y - 1.0f * S, 97.0f * S, 37.0f * S, border_gold);
+                ui_add_quad(step_x + 45.0f * S, r1_y, 95.0f * S, 35.0f * S, btn_editing);
+                ui_add_text_centered(val1, step_x + 92.0f * S, r1_y + 17.0f * S, 1.1f * S, text_white);
+            } else {
+                snprintf(val1, sizeof(val1), "%.2fs", ui->engine_config.cb_search_time);
+                ui_add_quad(step_x + 45.0f * S, r1_y, 95.0f * S, 35.0f * S, btn_normal);
+                ui_add_text_centered(val1, step_x + 92.0f * S, r1_y + 17.0f * S, 1.1f * S, text_gold);
+            }
             
             ui_add_quad(step_x + 145.0f * S, r1_y, 40.0f * S, 35.0f * S, btn_stepper);
             ui_add_text_centered("+", step_x + 165.0f * S, r1_y + 17.0f * S, 1.5f * S, text_white);
@@ -811,18 +895,23 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             
         } else if (ui->settings_tab == 3) {
             // Tab 3: KINGSROW
-            float row_x = s_x + 40.0f * S;
-            float step_x = s_x + 450.0f * S;
-            
             float r1_y = s_y + 130.0f * S;
-            ui_add_text("TEMPO MASSIMO DI RICERCA:", row_x, r1_y + 10.0f * S, 1.1f * S, text_white);
+            ui_add_text("TEMPO MASSIMO DI RICERCA (PRESET / TASTIERA):", row_x, r1_y + 10.0f * S, 1.05f * S, text_white);
             ui_add_quad(step_x, r1_y, 40.0f * S, 35.0f * S, btn_stepper);
             ui_add_text_centered("-", step_x + 20.0f * S, r1_y + 17.0f * S, 1.5f * S, text_white);
             
             char val1[32];
-            snprintf(val1, sizeof(val1), "%.2fs", ui->engine_config.kr_search_time);
-            ui_add_quad(step_x + 45.0f * S, r1_y, 95.0f * S, 35.0f * S, btn_normal);
-            ui_add_text_centered(val1, step_x + 92.0f * S, r1_y + 17.0f * S, 1.1f * S, text_gold);
+            bool is_edit3 = (ui->editing_time_input && ui->editing_tab == 3);
+            if (is_edit3) {
+                snprintf(val1, sizeof(val1), "%s%s", ui->time_input_buf, (fmod(glfwGetTime(), 0.8) < 0.4 ? "_" : ""));
+                ui_add_quad(step_x + 44.0f * S, r1_y - 1.0f * S, 97.0f * S, 37.0f * S, border_gold);
+                ui_add_quad(step_x + 45.0f * S, r1_y, 95.0f * S, 35.0f * S, btn_editing);
+                ui_add_text_centered(val1, step_x + 92.0f * S, r1_y + 17.0f * S, 1.1f * S, text_white);
+            } else {
+                snprintf(val1, sizeof(val1), "%.2fs", ui->engine_config.kr_search_time);
+                ui_add_quad(step_x + 45.0f * S, r1_y, 95.0f * S, 35.0f * S, btn_normal);
+                ui_add_text_centered(val1, step_x + 92.0f * S, r1_y + 17.0f * S, 1.1f * S, text_gold);
+            }
             
             ui_add_quad(step_x + 145.0f * S, r1_y, 40.0f * S, 35.0f * S, btn_stepper);
             ui_add_text_centered("+", step_x + 165.0f * S, r1_y + 17.0f * S, 1.5f * S, text_white);
@@ -853,68 +942,107 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
         
     } else if (ui->state == UI_STATE_PLAYING) {
         // Top Left Turn Box with solid dark background panel
-        ui_add_quad(18.0f * S, 18.0f * S, 254.0f * S, 54.0f * S, border_color);
-        ui_add_quad(20.0f * S, 20.0f * S, 250.0f * S, 50.0f * S, glass_panel);
+        float t_box_w = 200.0f * S;
+        float t_box_h = 56.0f * S;
+        ui_add_quad(18.0f * S, 18.0f * S, t_box_w + 4.0f * S, t_box_h + 4.0f * S, border_color);
+        ui_add_quad(20.0f * S, 20.0f * S, t_box_w, t_box_h, glass_panel);
         
         const char *turn_str = (game->current_player == PLAYER_WHITE) ? "TURNO: BIANCO" : "TURNO: NERO";
-        ui_add_text_centered(turn_str, 145.0f * S, 45.0f * S, 1.4f * S, text_gold);
+        ui_add_text_centered(turn_str, 20.0f * S + t_box_w * 0.5f, 36.0f * S, 1.2f * S, text_gold);
+        
+        if (ui->is_thinking) {
+            double think_time = glfwGetTime() - ui->thinking_start_time;
+            char live_th[64];
+            snprintf(live_th, sizeof(live_th), "CALCOLO (%.1fs)...", think_time);
+            ui_add_text_centered(live_th, 20.0f * S + t_box_w * 0.5f, 58.0f * S, 0.90f * S, text_green);
+        } else {
+            ui_add_text_centered("IN ATTESA MOSSA", 20.0f * S + t_box_w * 0.5f, 58.0f * S, 0.85f * S, text_sub);
+        }
         
         // White Player / AI Response Time Badge
-        float w_lbl_x = 285.0f * S;
-        float lbl_w = 210.0f * S;
-        float lbl_h = 50.0f * S;
+        float w_lbl_x = 230.0f * S;
+        float lbl_w = 240.0f * S;
+        float lbl_h = 56.0f * S;
         ui_add_quad(w_lbl_x - 2.0f * S, 18.0f * S, lbl_w + 4.0f * S, lbl_h + 4.0f * S, border_color);
         ui_add_quad(w_lbl_x, 20.0f * S, lbl_w, lbl_h, glass_panel);
 
         bool white_is_ai = (game->mode == MODE_CPUVSCPU) || (game->mode == MODE_1PLAYER && game->human_player != PLAYER_WHITE);
         if (white_is_ai) {
             char title_str[64];
-            snprintf(title_str, sizeof(title_str), "BIANCO (%s)", engine_get_type_name(game->white_engine));
-            char val_str[64];
-            if (ui->has_white_ai_time) {
-                snprintf(val_str, sizeof(val_str), "TEMPO: %.2fs", ui->last_white_ai_time);
+            snprintf(title_str, sizeof(title_str), "BIANCO: %s", engine_get_type_name(game->white_engine));
+            ui_add_text_centered(title_str, w_lbl_x + lbl_w * 0.5f, 32.0f * S, 0.95f * S, text_sub);
+
+            char stat1[64];
+            if (ui->is_thinking && ui->thinking_player == PLAYER_WHITE) {
+                double el = glfwGetTime() - ui->thinking_start_time;
+                snprintf(stat1, sizeof(stat1), "CALCOLO: %.2fs", el);
+                ui_add_text_centered(stat1, w_lbl_x + lbl_w * 0.5f, 48.0f * S, 0.95f * S, text_green);
+            } else if (ui->white_stats.is_valid) {
+                snprintf(stat1, sizeof(stat1), "%.2fs | WIN:%.0f%% | %.0fk/s", 
+                         ui->white_stats.last_time, ui->white_stats.win_rate * 100.0f, ui->white_stats.iterations_sec / 1000.0);
+                ui_add_text_centered(stat1, w_lbl_x + lbl_w * 0.5f, 48.0f * S, 0.90f * S, text_gold);
+
+                char stat2[64];
+                snprintf(stat2, sizeof(stat2), "POOL: %uk (%.1f%%)", ui->white_stats.nodes_used / 1000, 
+                         (float)ui->white_stats.nodes_used * 100.0f / (float)(ui->white_stats.nodes_max > 0 ? ui->white_stats.nodes_max : 1));
+                ui_add_text_centered(stat2, w_lbl_x + lbl_w * 0.5f, 63.0f * S, 0.80f * S, text_sub);
+            } else if (ui->has_white_ai_time) {
+                snprintf(stat1, sizeof(stat1), "TEMPO: %.2fs", ui->last_white_ai_time);
+                ui_add_text_centered(stat1, w_lbl_x + lbl_w * 0.5f, 52.0f * S, 1.05f * S, text_gold);
             } else {
-                snprintf(val_str, sizeof(val_str), "TEMPO: --");
+                ui_add_text_centered("TEMPO: --", w_lbl_x + lbl_w * 0.5f, 52.0f * S, 1.00f * S, text_gold);
             }
-            ui_add_text_centered(title_str, w_lbl_x + lbl_w * 0.5f, 34.0f * S, 0.95f * S, text_sub);
-            ui_add_text_centered(val_str, w_lbl_x + lbl_w * 0.5f, 54.0f * S, 1.1f * S, text_gold);
         } else {
-            ui_add_text_centered("BIANCO", w_lbl_x + lbl_w * 0.5f, 34.0f * S, 0.95f * S, text_sub);
-            ui_add_text_centered("UMANO", w_lbl_x + lbl_w * 0.5f, 54.0f * S, 1.1f * S, text_white);
+            ui_add_text_centered("BIANCO: GIOCATORE UMANO", w_lbl_x + lbl_w * 0.5f, 36.0f * S, 0.95f * S, text_sub);
+            ui_add_text_centered("IN GIOCO", w_lbl_x + lbl_w * 0.5f, 54.0f * S, 1.05f * S, text_white);
         }
 
         // Black Player / AI Response Time Badge
-        float b_lbl_x = 510.0f * S;
+        float b_lbl_x = 480.0f * S;
         ui_add_quad(b_lbl_x - 2.0f * S, 18.0f * S, lbl_w + 4.0f * S, lbl_h + 4.0f * S, border_color);
         ui_add_quad(b_lbl_x, 20.0f * S, lbl_w, lbl_h, glass_panel);
 
         bool black_is_ai = (game->mode == MODE_CPUVSCPU) || (game->mode == MODE_1PLAYER && game->human_player != PLAYER_BLACK);
         if (black_is_ai) {
             char title_str[64];
-            snprintf(title_str, sizeof(title_str), "NERO (%s)", engine_get_type_name(game->black_engine));
-            char val_str[64];
-            if (ui->has_black_ai_time) {
-                snprintf(val_str, sizeof(val_str), "TEMPO: %.2fs", ui->last_black_ai_time);
+            snprintf(title_str, sizeof(title_str), "NERO: %s", engine_get_type_name(game->black_engine));
+            ui_add_text_centered(title_str, b_lbl_x + lbl_w * 0.5f, 32.0f * S, 0.95f * S, text_sub);
+
+            char stat1[64];
+            if (ui->is_thinking && ui->thinking_player == PLAYER_BLACK) {
+                double el = glfwGetTime() - ui->thinking_start_time;
+                snprintf(stat1, sizeof(stat1), "CALCOLO: %.2fs", el);
+                ui_add_text_centered(stat1, b_lbl_x + lbl_w * 0.5f, 48.0f * S, 0.95f * S, text_green);
+            } else if (ui->black_stats.is_valid) {
+                snprintf(stat1, sizeof(stat1), "%.2fs | WIN:%.0f%% | %.0fk/s", 
+                         ui->black_stats.last_time, ui->black_stats.win_rate * 100.0f, ui->black_stats.iterations_sec / 1000.0);
+                ui_add_text_centered(stat1, b_lbl_x + lbl_w * 0.5f, 48.0f * S, 0.90f * S, text_gold);
+
+                char stat2[64];
+                snprintf(stat2, sizeof(stat2), "POOL: %uk (%.1f%%)", ui->black_stats.nodes_used / 1000, 
+                         (float)ui->black_stats.nodes_used * 100.0f / (float)(ui->black_stats.nodes_max > 0 ? ui->black_stats.nodes_max : 1));
+                ui_add_text_centered(stat2, b_lbl_x + lbl_w * 0.5f, 63.0f * S, 0.80f * S, text_sub);
+            } else if (ui->has_black_ai_time) {
+                snprintf(stat1, sizeof(stat1), "TEMPO: %.2fs", ui->last_black_ai_time);
+                ui_add_text_centered(stat1, b_lbl_x + lbl_w * 0.5f, 52.0f * S, 1.05f * S, text_gold);
             } else {
-                snprintf(val_str, sizeof(val_str), "TEMPO: --");
+                ui_add_text_centered("TEMPO: --", b_lbl_x + lbl_w * 0.5f, 52.0f * S, 1.00f * S, text_gold);
             }
-            ui_add_text_centered(title_str, b_lbl_x + lbl_w * 0.5f, 34.0f * S, 0.95f * S, text_sub);
-            ui_add_text_centered(val_str, b_lbl_x + lbl_w * 0.5f, 54.0f * S, 1.1f * S, text_gold);
         } else {
-            ui_add_text_centered("NERO", b_lbl_x + lbl_w * 0.5f, 34.0f * S, 0.95f * S, text_sub);
-            ui_add_text_centered("UMANO", b_lbl_x + lbl_w * 0.5f, 54.0f * S, 1.1f * S, text_white);
+            ui_add_text_centered("NERO: GIOCATORE UMANO", b_lbl_x + lbl_w * 0.5f, 36.0f * S, 0.95f * S, text_sub);
+            ui_add_text_centered("IN GIOCO", b_lbl_x + lbl_w * 0.5f, 54.0f * S, 1.05f * S, text_white);
         }
         
         // Top Right Menu Button & Engine Settings Button
-        float menu_btn_x = (float)ui->win_w - 275.0f * S;
-        ui_add_quad(menu_btn_x - 2.0f * S, 18.0f * S, 124.0f * S, 49.0f * S, border_color);
-        ui_add_quad(menu_btn_x, 20.0f * S, 120.0f * S, 45.0f * S, btn_normal);
-        ui_add_text_centered("MENU", menu_btn_x + 60.0f * S, 42.0f * S, 1.2f * S, text_white);
+        float menu_btn_x = (float)ui->win_w - 245.0f * S;
+        ui_add_quad(menu_btn_x - 2.0f * S, 18.0f * S, 114.0f * S, 58.0f * S, border_color);
+        ui_add_quad(menu_btn_x, 20.0f * S, 110.0f * S, 54.0f * S, btn_normal);
+        ui_add_text_centered("MENU", menu_btn_x + 55.0f * S, 47.0f * S, 1.2f * S, text_white);
 
-        float cfg_top_x = (float)ui->win_w - 140.0f * S;
-        ui_add_quad(cfg_top_x - 2.0f * S, 18.0f * S, 124.0f * S, 49.0f * S, border_color);
-        ui_add_quad(cfg_top_x, 20.0f * S, 120.0f * S, 45.0f * S, btn_stepper);
-        ui_add_text_centered("MOTORI", cfg_top_x + 60.0f * S, 42.0f * S, 1.2f * S, text_gold);
+        float cfg_top_x = (float)ui->win_w - 125.0f * S;
+        ui_add_quad(cfg_top_x - 2.0f * S, 18.0f * S, 114.0f * S, 58.0f * S, border_color);
+        ui_add_quad(cfg_top_x, 20.0f * S, 110.0f * S, 54.0f * S, btn_stepper);
+        ui_add_text_centered("MOTORI", cfg_top_x + 55.0f * S, 47.0f * S, 1.2f * S, text_gold);
         
         // Repetition Warning Indicator (Visible only if current position has been repeated 2 times)
         if (!game->is_game_over) {
@@ -923,11 +1051,11 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
                 float rep_w = 340.0f * S;
                 float rep_h = 46.0f * S;
                 float rep_x = 20.0f * S;
-                float rep_y = 78.0f * S;
+                float rep_y = 86.0f * S;
 
-                vec4 warn_border = { 0.95f, 0.60f, 0.10f, 0.90f }; // Vivid Amber Border
-                vec4 warn_glass  = { 0.22f, 0.14f, 0.05f, 0.90f }; // Warm Dark Amber Glass
-                vec4 text_warn   = { 1.00f, 0.75f, 0.20f, 1.00f }; // Bright Gold
+                vec4 warn_border = { 0.95f, 0.60f, 0.10f, 0.90f };
+                vec4 warn_glass  = { 0.22f, 0.14f, 0.05f, 0.90f };
+                vec4 text_warn   = { 1.00f, 0.75f, 0.20f, 1.00f };
 
                 ui_add_quad(rep_x - 2.0f * S, rep_y - 2.0f * S, rep_w + 4.0f * S, rep_h + 4.0f * S, warn_border);
                 ui_add_quad(rep_x, rep_y, rep_w, rep_h, warn_glass);
@@ -966,25 +1094,115 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             ui_add_quad(r_x, r_y, r_w, r_h, btn_start);
             ui_add_text_centered("NUOVA PARTITA", r_x + r_w * 0.5f, r_y + r_h * 0.5f, 1.4f * S, text_white);
         }
-
     }
     
     ui_end_and_draw(ui_shader, ui->win_w, ui->win_h);
+}
+
+static void ui_commit_time_input(UIContext *ui) {
+    if (!ui->editing_time_input) return;
+    if (ui->time_input_len > 0) {
+        char *endptr = NULL;
+        double parsed = strtod(ui->time_input_buf, &endptr);
+        if (endptr != ui->time_input_buf && parsed >= 0.05 && parsed <= 600.0) {
+            if (ui->editing_tab == 0) ui->engine_config.mcts_time_budget = parsed;
+            else if (ui->editing_tab == 1) ui->engine_config.puct_time_budget = parsed;
+            else if (ui->editing_tab == 2) ui->engine_config.cb_search_time = parsed;
+            else if (ui->editing_tab == 3) ui->engine_config.kr_search_time = parsed;
+        }
+    }
+    ui->editing_time_input = false;
+    ui->time_input_buf[0] = '\0';
+    ui->time_input_len = 0;
+}
+
+static void ui_cancel_time_input(UIContext *ui) {
+    ui->editing_time_input = false;
+    ui->time_input_buf[0] = '\0';
+    ui->time_input_len = 0;
+}
+
+void ui_handle_char(UIContext *ui, unsigned int codepoint) {
+    if (!ui->editing_time_input) return;
+    // Allow digits '0'-'9' and '.'
+    if ((codepoint >= '0' && codepoint <= '9') || codepoint == '.') {
+        if (codepoint == '.' && strchr(ui->time_input_buf, '.') != NULL) return;
+        if (ui->time_input_len < 15) {
+            ui->time_input_buf[ui->time_input_len++] = (char)codepoint;
+            ui->time_input_buf[ui->time_input_len] = '\0';
+        }
+    }
+}
+
+void ui_handle_key(UIContext *ui, int key, int scancode, int action, int mods) {
+    (void)scancode; (void)mods;
+    if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
+    if (!ui->editing_time_input) return;
+
+    if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+        ui_commit_time_input(ui);
+    } else if (key == GLFW_KEY_ESCAPE) {
+        ui_cancel_time_input(ui);
+    } else if (key == GLFW_KEY_BACKSPACE) {
+        if (ui->time_input_len > 0) {
+            ui->time_input_len--;
+            ui->time_input_buf[ui->time_input_len] = '\0';
+        }
+    }
 }
 
 bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mouse_y) {
     float S = ui_get_scale(ui);
 
     if (ui->state == UI_STATE_MAIN_MENU) {
+        // If dropdown is open, handle dropdown clicks first
+        if (ui->engine_dropdown_open) {
+            float dd_x = ui->dropdown_x;
+            float dd_y = ui->dropdown_y;
+            float dd_w = ui->dropdown_w;
+            float dd_h = ui->dropdown_h;
+
+            if (point_in_rect(mouse_x, mouse_y, dd_x, dd_y, dd_w, dd_h)) {
+                float item_y = dd_y + 34.0f * S;
+                float item_h = 34.0f * S;
+                float item_w = dd_w - 20.0f * S;
+
+                for (int e = 0; e < 5; e++) {
+                    if (point_in_rect(mouse_x, mouse_y, dd_x + 10.0f * S, item_y, item_w, item_h)) {
+                        EngineType et = s_dropdown_engines[e];
+                        if (engine_is_type_available(et)) {
+                            if (ui->selected_mode == MODE_1PLAYER) {
+                                ui->selected_black_engine = et;
+                            } else if (ui->selected_mode == MODE_CPUVSCPU) {
+                                if (ui->dropdown_target_slot == 0) {
+                                    ui->selected_white_engine = et;
+                                } else {
+                                    ui->selected_black_engine = et;
+                                }
+                            }
+                            ui->engine_dropdown_open = false;
+                        }
+                        return true;
+                    }
+                    item_y += 37.0f * S;
+                }
+            } else {
+                // Click outside closes dropdown
+                ui->engine_dropdown_open = false;
+                return true;
+            }
+            return true;
+        }
+
         float p_w = 560.0f * S;
-        float p_h = 515.0f * S;
+        float p_h = 440.0f * S;
         float p_x = ((float)ui->win_w - p_w) * 0.5f;
         float p_y = ((float)ui->win_h - p_h) * 0.5f;
         
         float btn_w = 150.0f * S;
         float btn_h = 38.0f * S;
         float start_x = p_x + 35.0f * S;
-        float btn_y = p_y + 108.0f * S;
+        float btn_y = p_y + 104.0f * S;
         
         // Mode 2Player
         if (point_in_rect(mouse_x, mouse_y, start_x, btn_y, btn_w, btn_h)) {
@@ -1003,8 +1221,8 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
         }
         
         // Color selection for 1Player mode
+        float eng_y = p_y + 154.0f * S;
         if (ui->selected_mode == MODE_1PLAYER) {
-            float eng_y = p_y + 158.0f * S;
             float col_btn_w = 235.0f * S;
             
             // White button
@@ -1018,57 +1236,38 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
                 return true;
             }
 
-            // CPU Engine Selection button in 1Player mode
-            if (point_in_rect(mouse_x, mouse_y, start_x, eng_y + 58.0f * S, 480.0f * S, 34.0f * S)) {
-                do {
-                    ui->selected_black_engine = (ui->selected_black_engine + 1) % ENGINE_TYPE_COUNT;
-                } while (!engine_is_type_available(ui->selected_black_engine));
+            // CPU Engine Dropdown open button in 1Player mode
+            if (point_in_rect(mouse_x, mouse_y, start_x, eng_y + 58.0f * S, 480.0f * S, 36.0f * S)) {
+                ui->dropdown_target_slot = 0;
+                ui->engine_dropdown_open = true;
                 return true;
             }
         } else if (ui->selected_mode == MODE_CPUVSCPU) {
-            float eng_y = p_y + 158.0f * S;
-            if (point_in_rect(mouse_x, mouse_y, start_x, eng_y + 18.0f * S, 235.0f * S, 34.0f * S)) {
-                do {
-                    ui->selected_white_engine = (ui->selected_white_engine + 1) % ENGINE_TYPE_COUNT;
-                } while (!engine_is_type_available(ui->selected_white_engine));
+            // CPU 1 dropdown button
+            if (point_in_rect(mouse_x, mouse_y, start_x, eng_y + 18.0f * S, 235.0f * S, 36.0f * S)) {
+                ui->dropdown_target_slot = 0;
+                ui->engine_dropdown_open = true;
                 return true;
             }
-            if (point_in_rect(mouse_x, mouse_y, start_x + 245.0f * S, eng_y + 18.0f * S, 235.0f * S, 34.0f * S)) {
-                do {
-                    ui->selected_black_engine = (ui->selected_black_engine + 1) % ENGINE_TYPE_COUNT;
-                } while (!engine_is_type_available(ui->selected_black_engine));
+            // CPU 2 dropdown button
+            if (point_in_rect(mouse_x, mouse_y, start_x + 245.0f * S, eng_y + 18.0f * S, 235.0f * S, 36.0f * S)) {
+                ui->dropdown_target_slot = 1;
+                ui->engine_dropdown_open = true;
                 return true;
             }
-        }
-
-        // Thinking Time Profiles Selection (Fast 0.2s | Medium 1.0s | Slow 3.0s)
-        float prof_btn_y = p_y + 280.0f * S;
-        float prof_btn_w = 150.0f * S;
-        float prof_btn_h = 35.0f * S;
-        if (point_in_rect(mouse_x, mouse_y, start_x, prof_btn_y, prof_btn_w, prof_btn_h)) {
-            engine_config_set_time_profile(&ui->engine_config, TIME_PROFILE_FAST);
-            return true;
-        }
-        if (point_in_rect(mouse_x, mouse_y, start_x + 165.0f * S, prof_btn_y, prof_btn_w, prof_btn_h)) {
-            engine_config_set_time_profile(&ui->engine_config, TIME_PROFILE_MEDIUM);
-            return true;
-        }
-        if (point_in_rect(mouse_x, mouse_y, start_x + 330.0f * S, prof_btn_y, prof_btn_w, prof_btn_h)) {
-            engine_config_set_time_profile(&ui->engine_config, TIME_PROFILE_SLOW);
-            return true;
         }
         
         // Open Engine Settings Button
-        float cfg_btn_y = p_y + 332.0f * S;
+        float cfg_btn_y = p_y + 265.0f * S;
         float cfg_btn_w = 480.0f * S;
-        if (point_in_rect(mouse_x, mouse_y, start_x, cfg_btn_y, cfg_btn_w, 36.0f * S)) {
+        if (point_in_rect(mouse_x, mouse_y, start_x, cfg_btn_y, cfg_btn_w, 38.0f * S)) {
             ui->prev_ui_state = ui->state;
             ui->state = UI_STATE_ENGINE_SETTINGS;
             return true;
         }
 
         // Start Game Button
-        float start_btn_y = p_y + 385.0f * S;
+        float start_btn_y = p_y + 320.0f * S;
         float start_btn_w = 340.0f * S;
         float start_btn_h = 52.0f * S;
         float start_btn_x = p_x + (p_w - start_btn_w) * 0.5f;
@@ -1079,6 +1278,9 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
             ui->has_black_ai_time = false;
             ui->last_white_ai_time = 0.0;
             ui->last_black_ai_time = 0.0;
+            memset(&ui->white_stats, 0, sizeof(EngineStats));
+            memset(&ui->black_stats, 0, sizeof(EngineStats));
+            ui->is_thinking = false;
             game_init(game, ui->selected_mode, ui->selected_human_color, ui->selected_white_engine, ui->selected_black_engine);
             return true;
         }
@@ -1094,18 +1296,22 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
         float tab_h = 36.0f * S;
         
         if (point_in_rect(mouse_x, mouse_y, s_x + 35.0f * S, tab_y, tab_w, tab_h)) {
+            ui_commit_time_input(ui);
             ui->settings_tab = 0;
             return true;
         }
         if (point_in_rect(mouse_x, mouse_y, s_x + 190.0f * S, tab_y, tab_w, tab_h)) {
+            ui_commit_time_input(ui);
             ui->settings_tab = 1;
             return true;
         }
         if (point_in_rect(mouse_x, mouse_y, s_x + 345.0f * S, tab_y, tab_w, tab_h)) {
+            ui_commit_time_input(ui);
             ui->settings_tab = 2;
             return true;
         }
         if (point_in_rect(mouse_x, mouse_y, s_x + 500.0f * S, tab_y, tab_w, tab_h)) {
+            ui_commit_time_input(ui);
             ui->settings_tab = 3;
             return true;
         }
@@ -1124,40 +1330,57 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
             
             // Parameter 1: Time budget (- / +)
             if (point_in_rect(mouse_x, mouse_y, step_x, r1_y, 40.0f * S, 28.0f * S)) {
-                step_double_val(&ui->engine_config.mcts_time_budget, s_mcts_time_budgets, sizeof(s_mcts_time_budgets)/sizeof(double), -1);
+                ui_commit_time_input(ui);
+                step_time_preset(&ui->engine_config.mcts_time_budget, -1);
+                return true;
+            }
+            // Parameter 1: Click time value box to edit with keyboard
+            if (point_in_rect(mouse_x, mouse_y, step_x + 45.0f * S, r1_y, 95.0f * S, 28.0f * S)) {
+                ui->editing_time_input = true;
+                ui->editing_tab = 0;
+                ui->editing_original_val = ui->engine_config.mcts_time_budget;
+                snprintf(ui->time_input_buf, sizeof(ui->time_input_buf), "%.2f", ui->engine_config.mcts_time_budget);
+                ui->time_input_len = (int)strlen(ui->time_input_buf);
                 return true;
             }
             if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f * S, r1_y, 40.0f * S, 28.0f * S)) {
-                step_double_val(&ui->engine_config.mcts_time_budget, s_mcts_time_budgets, sizeof(s_mcts_time_budgets)/sizeof(double), 1);
+                ui_commit_time_input(ui);
+                step_time_preset(&ui->engine_config.mcts_time_budget, 1);
                 return true;
             }
             
             // Parameter 2: Alpha (- / +)
             if (point_in_rect(mouse_x, mouse_y, step_x, r2_y, 40.0f * S, 28.0f * S)) {
+                ui_commit_time_input(ui);
                 step_float_val(&ui->engine_config.mcts_exploration, s_mcts_alphas, sizeof(s_mcts_alphas)/sizeof(float), -1);
                 return true;
             }
             if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f * S, r2_y, 40.0f * S, 28.0f * S)) {
+                ui_commit_time_input(ui);
                 step_float_val(&ui->engine_config.mcts_exploration, s_mcts_alphas, sizeof(s_mcts_alphas)/sizeof(float), 1);
                 return true;
             }
             
             // Parameter 3: Max rollout depth (- / +)
             if (point_in_rect(mouse_x, mouse_y, step_x, r3_y, 40.0f * S, 28.0f * S)) {
+                ui_commit_time_input(ui);
                 step_int_val(&ui->engine_config.mcts_max_rollout_depth, s_mcts_depths, sizeof(s_mcts_depths)/sizeof(int), -1);
                 return true;
             }
             if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f * S, r3_y, 40.0f * S, 28.0f * S)) {
+                ui_commit_time_input(ui);
                 step_int_val(&ui->engine_config.mcts_max_rollout_depth, s_mcts_depths, sizeof(s_mcts_depths)/sizeof(int), 1);
                 return true;
             }
 
             // Parameter 4: Rollout Epsilon (- / +)
             if (point_in_rect(mouse_x, mouse_y, step_x, r4_y, 40.0f * S, 28.0f * S)) {
+                ui_commit_time_input(ui);
                 step_float_val(&ui->engine_config.mcts_rollout_epsilon, s_mcts_epsilons, sizeof(s_mcts_epsilons)/sizeof(float), -1);
                 return true;
             }
             if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f * S, r4_y, 40.0f * S, 28.0f * S)) {
+                ui_commit_time_input(ui);
                 step_float_val(&ui->engine_config.mcts_rollout_epsilon, s_mcts_epsilons, sizeof(s_mcts_epsilons)/sizeof(float), 1);
                 return true;
             }
@@ -1165,6 +1388,7 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
             // Parameter 5: Opening book mode selector
             float bk_btn_w = 225.0f * S;
             if (point_in_rect(mouse_x, mouse_y, step_x - 40.0f * S, r5_y, bk_btn_w, 28.0f * S)) {
+                ui_commit_time_input(ui);
                 bool avail = opening_book_is_available(ui->engine_config.book_backend, ui->engine_config.book_custom_path);
                 if (!avail) {
                     ui->engine_config.book_mode = BOOK_MODE_OFF;
@@ -1183,6 +1407,7 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
 
             // Parameter 6: Database backend selector
             if (point_in_rect(mouse_x, mouse_y, step_x - 40.0f * S, r6_y, bk_btn_w, 28.0f * S)) {
+                ui_commit_time_input(ui);
                 WLDBackendType next_b = (ui->engine_config.wld_backend == WLD_BACKEND_OFFICIAL_8PIECE) ? WLD_BACKEND_REDUCED_NATIVE :
                                         (ui->engine_config.wld_backend == WLD_BACKEND_REDUCED_NATIVE ? WLD_BACKEND_NONE : WLD_BACKEND_OFFICIAL_8PIECE);
                 ui->engine_config.wld_backend = next_b;
@@ -1193,6 +1418,7 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
 
             // Parameter 7: Debug log toggle
             if (point_in_rect(mouse_x, mouse_y, step_x, r7_y, 185.0f * S, 28.0f * S)) {
+                ui_commit_time_input(ui);
                 ui->engine_config.mcts_debug_log = !ui->engine_config.mcts_debug_log;
                 return true;
             }
@@ -1210,50 +1436,69 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
             
             // Parameter 1: Time budget (- / +)
             if (point_in_rect(mouse_x, mouse_y, step_x, r1_y, 40.0f * S, 26.0f * S)) {
-                step_double_val(&ui->engine_config.puct_time_budget, s_puct_time_budgets, sizeof(s_puct_time_budgets)/sizeof(double), -1);
+                ui_commit_time_input(ui);
+                step_time_preset(&ui->engine_config.puct_time_budget, -1);
+                return true;
+            }
+            // Parameter 1: Click time value box to edit with keyboard
+            if (point_in_rect(mouse_x, mouse_y, step_x + 45.0f * S, r1_y, 95.0f * S, 26.0f * S)) {
+                ui->editing_time_input = true;
+                ui->editing_tab = 1;
+                ui->editing_original_val = ui->engine_config.puct_time_budget;
+                snprintf(ui->time_input_buf, sizeof(ui->time_input_buf), "%.2f", ui->engine_config.puct_time_budget);
+                ui->time_input_len = (int)strlen(ui->time_input_buf);
                 return true;
             }
             if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f * S, r1_y, 40.0f * S, 26.0f * S)) {
-                step_double_val(&ui->engine_config.puct_time_budget, s_puct_time_budgets, sizeof(s_puct_time_budgets)/sizeof(double), 1);
+                ui_commit_time_input(ui);
+                step_time_preset(&ui->engine_config.puct_time_budget, 1);
                 return true;
             }
             
             // Parameter 2: c_puct (- / +)
             if (point_in_rect(mouse_x, mouse_y, step_x, r2_y, 40.0f * S, 26.0f * S)) {
+                ui_commit_time_input(ui);
                 step_float_val(&ui->engine_config.puct_c_puct, s_puct_c_pucts, sizeof(s_puct_c_pucts)/sizeof(float), -1);
                 return true;
             }
             if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f * S, r2_y, 40.0f * S, 26.0f * S)) {
+                ui_commit_time_input(ui);
                 step_float_val(&ui->engine_config.puct_c_puct, s_puct_c_pucts, sizeof(s_puct_c_pucts)/sizeof(float), 1);
                 return true;
             }
 
             // Parameter 3: Temperature (- / +)
             if (point_in_rect(mouse_x, mouse_y, step_x, r3_y, 40.0f * S, 26.0f * S)) {
+                ui_commit_time_input(ui);
                 step_float_val(&ui->engine_config.puct_temperature, s_puct_temperatures, sizeof(s_puct_temperatures)/sizeof(float), -1);
                 return true;
             }
             if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f * S, r3_y, 40.0f * S, 26.0f * S)) {
+                ui_commit_time_input(ui);
                 step_float_val(&ui->engine_config.puct_temperature, s_puct_temperatures, sizeof(s_puct_temperatures)/sizeof(float), 1);
                 return true;
             }
             
             // Parameter 4: Max rollout depth (- / +)
             if (point_in_rect(mouse_x, mouse_y, step_x, r4_y, 40.0f * S, 26.0f * S)) {
+                ui_commit_time_input(ui);
                 step_int_val(&ui->engine_config.puct_max_rollout_depth, s_puct_depths, sizeof(s_puct_depths)/sizeof(int), -1);
                 return true;
             }
             if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f * S, r4_y, 40.0f * S, 26.0f * S)) {
+                ui_commit_time_input(ui);
                 step_int_val(&ui->engine_config.puct_max_rollout_depth, s_puct_depths, sizeof(s_puct_depths)/sizeof(int), 1);
                 return true;
             }
 
             // Parameter 5: Rollout Epsilon (- / +)
             if (point_in_rect(mouse_x, mouse_y, step_x, r5_y, 40.0f * S, 26.0f * S)) {
+                ui_commit_time_input(ui);
                 step_float_val(&ui->engine_config.puct_rollout_epsilon, s_mcts_epsilons, sizeof(s_mcts_epsilons)/sizeof(float), -1);
                 return true;
             }
             if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f * S, r5_y, 40.0f * S, 26.0f * S)) {
+                ui_commit_time_input(ui);
                 step_float_val(&ui->engine_config.puct_rollout_epsilon, s_mcts_epsilons, sizeof(s_mcts_epsilons)/sizeof(float), 1);
                 return true;
             }
@@ -1261,6 +1506,7 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
             // Parameter 6: Opening book mode selector
             float bk_btn_w1 = 225.0f * S;
             if (point_in_rect(mouse_x, mouse_y, step_x - 40.0f * S, r6_y, bk_btn_w1, 26.0f * S)) {
+                ui_commit_time_input(ui);
                 bool avail = opening_book_is_available(ui->engine_config.book_backend, ui->engine_config.book_custom_path);
                 if (!avail) {
                     ui->engine_config.book_mode = BOOK_MODE_OFF;
@@ -1279,6 +1525,7 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
 
             // Parameter 7: Database backend selector
             if (point_in_rect(mouse_x, mouse_y, step_x - 40.0f * S, r7_y, bk_btn_w1, 26.0f * S)) {
+                ui_commit_time_input(ui);
                 WLDBackendType next_b = (ui->engine_config.wld_backend == WLD_BACKEND_OFFICIAL_8PIECE) ? WLD_BACKEND_REDUCED_NATIVE :
                                         (ui->engine_config.wld_backend == WLD_BACKEND_REDUCED_NATIVE ? WLD_BACKEND_NONE : WLD_BACKEND_OFFICIAL_8PIECE);
                 ui->engine_config.wld_backend = next_b;
@@ -1289,6 +1536,7 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
 
             // Parameter 8: Debug log toggle
             if (point_in_rect(mouse_x, mouse_y, step_x, r8_y, 185.0f * S, 26.0f * S)) {
+                ui_commit_time_input(ui);
                 ui->engine_config.puct_debug_log = !ui->engine_config.puct_debug_log;
                 return true;
             }
@@ -1297,22 +1545,42 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
             // CheckerBoard Controls
             float r1_y = s_y + 130.0f * S;
             if (point_in_rect(mouse_x, mouse_y, step_x, r1_y, 40.0f * S, 35.0f * S)) {
-                step_double_val(&ui->engine_config.cb_search_time, s_cb_times, sizeof(s_cb_times)/sizeof(double), -1);
+                ui_commit_time_input(ui);
+                step_time_preset(&ui->engine_config.cb_search_time, -1);
+                return true;
+            }
+            if (point_in_rect(mouse_x, mouse_y, step_x + 45.0f * S, r1_y, 95.0f * S, 35.0f * S)) {
+                ui->editing_time_input = true;
+                ui->editing_tab = 2;
+                ui->editing_original_val = ui->engine_config.cb_search_time;
+                snprintf(ui->time_input_buf, sizeof(ui->time_input_buf), "%.2f", ui->engine_config.cb_search_time);
+                ui->time_input_len = (int)strlen(ui->time_input_buf);
                 return true;
             }
             if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f * S, r1_y, 40.0f * S, 35.0f * S)) {
-                step_double_val(&ui->engine_config.cb_search_time, s_cb_times, sizeof(s_cb_times)/sizeof(double), 1);
+                ui_commit_time_input(ui);
+                step_time_preset(&ui->engine_config.cb_search_time, 1);
                 return true;
             }
         } else if (ui->settings_tab == 3) {
             // Kingsrow Controls
             float r1_y = s_y + 130.0f * S;
             if (point_in_rect(mouse_x, mouse_y, step_x, r1_y, 40.0f * S, 35.0f * S)) {
-                step_double_val(&ui->engine_config.kr_search_time, s_kr_times, sizeof(s_kr_times)/sizeof(double), -1);
+                ui_commit_time_input(ui);
+                step_time_preset(&ui->engine_config.kr_search_time, -1);
+                return true;
+            }
+            if (point_in_rect(mouse_x, mouse_y, step_x + 45.0f * S, r1_y, 95.0f * S, 35.0f * S)) {
+                ui->editing_time_input = true;
+                ui->editing_tab = 3;
+                ui->editing_original_val = ui->engine_config.kr_search_time;
+                snprintf(ui->time_input_buf, sizeof(ui->time_input_buf), "%.2f", ui->engine_config.kr_search_time);
+                ui->time_input_len = (int)strlen(ui->time_input_buf);
                 return true;
             }
             if (point_in_rect(mouse_x, mouse_y, step_x + 145.0f * S, r1_y, 40.0f * S, 35.0f * S)) {
-                step_double_val(&ui->engine_config.kr_search_time, s_kr_times, sizeof(s_kr_times)/sizeof(double), 1);
+                ui_commit_time_input(ui);
+                step_time_preset(&ui->engine_config.kr_search_time, 1);
                 return true;
             }
         }
@@ -1324,27 +1592,37 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
         
         // Reset defaults
         if (point_in_rect(mouse_x, mouse_y, s_x + 40.0f * S, ftr_y, ftr_btn_w, ftr_btn_h)) {
+            ui_commit_time_input(ui);
             engine_config_init_default(&ui->engine_config);
             return true;
         }
         
         // Save and Close
         if (point_in_rect(mouse_x, mouse_y, s_x + 360.0f * S, ftr_y, ftr_btn_w, ftr_btn_h)) {
+            ui_commit_time_input(ui);
             ui->state = ui->prev_ui_state;
+            return true;
+        }
+
+        // Clicking anywhere else in settings commits active text input
+        if (ui->editing_time_input) {
+            ui_commit_time_input(ui);
             return true;
         }
         
     } else if (ui->state == UI_STATE_PLAYING) {
         // Back to Main Menu Button
-        float menu_btn_x = (float)ui->win_w - 275.0f * S;
-        if (point_in_rect(mouse_x, mouse_y, menu_btn_x, 20.0f * S, 120.0f * S, 45.0f * S)) {
+        float menu_btn_x = (float)ui->win_w - 245.0f * S;
+        if (point_in_rect(mouse_x, mouse_y, menu_btn_x, 20.0f * S, 110.0f * S, 54.0f * S)) {
+            engine_request_stop();
             ui->state = UI_STATE_MAIN_MENU;
             return true;
         }
         
         // Open Engine Settings Button from Playing HUD
-        float cfg_top_x = (float)ui->win_w - 140.0f * S;
-        if (point_in_rect(mouse_x, mouse_y, cfg_top_x, 20.0f * S, 120.0f * S, 45.0f * S)) {
+        float cfg_top_x = (float)ui->win_w - 125.0f * S;
+        if (point_in_rect(mouse_x, mouse_y, cfg_top_x, 20.0f * S, 110.0f * S, 54.0f * S)) {
+            engine_request_stop();
             ui->prev_ui_state = ui->state;
             ui->state = UI_STATE_ENGINE_SETTINGS;
             return true;
@@ -1366,6 +1644,9 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
                 ui->has_black_ai_time = false;
                 ui->last_white_ai_time = 0.0;
                 ui->last_black_ai_time = 0.0;
+                memset(&ui->white_stats, 0, sizeof(EngineStats));
+                memset(&ui->black_stats, 0, sizeof(EngineStats));
+                ui->is_thinking = false;
                 game_init(game, ui->selected_mode, ui->selected_human_color, ui->selected_white_engine, ui->selected_black_engine);
                 return true;
             }

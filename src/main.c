@@ -5,6 +5,13 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <pthread.h>
+#include <unistd.h>
+#endif
+
 #include "window.h"
 #include "graphics.h"
 #include "camera.h"
@@ -13,6 +20,100 @@
 #include "interaction.h"
 #include "ui.h"
 #include "cli.h"
+
+static UIContext *s_global_ui = NULL;
+
+static void char_callback(GLFWwindow *window, unsigned int codepoint) {
+    (void)window;
+    if (s_global_ui) {
+        ui_handle_char(s_global_ui, codepoint);
+    }
+}
+
+static void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods) {
+    (void)window;
+    if (s_global_ui) {
+        ui_handle_key(s_global_ui, key, scancode, action, mods);
+    }
+}
+
+typedef struct {
+    Engine *engine;
+    EngineType engine_type;
+    GameState game_copy;
+    Move result_move;
+    volatile bool is_running;
+    volatile bool finished;
+    double start_time;
+    Player player;
+#ifdef _WIN32
+    HANDLE thread_handle;
+#else
+    pthread_t thread_handle;
+#endif
+} AIWorker;
+
+#ifdef _WIN32
+static DWORD WINAPI ai_thread_func(LPVOID lpParam) {
+    AIWorker *worker = (AIWorker*)lpParam;
+    if (worker && worker->engine && worker->engine->get_move) {
+        worker->result_move = worker->engine->get_move(worker->engine->internal_state, &worker->game_copy);
+    } else {
+        worker->result_move = MOVE_NONE;
+    }
+    worker->finished = true;
+    return 0;
+}
+#else
+static void* ai_thread_func(void *param) {
+    AIWorker *worker = (AIWorker*)param;
+    if (worker && worker->engine && worker->engine->get_move) {
+        worker->result_move = worker->engine->get_move(worker->engine->internal_state, &worker->game_copy);
+    } else {
+        worker->result_move = MOVE_NONE;
+    }
+    worker->finished = true;
+    return NULL;
+}
+#endif
+
+static void ai_worker_start(AIWorker *worker, Engine *engine, EngineType engine_type, const GameState *game, Player player) {
+    worker->engine = engine;
+    worker->engine_type = engine_type;
+    worker->game_copy = *game;
+    worker->result_move = MOVE_NONE;
+    worker->finished = false;
+    worker->is_running = true;
+    worker->start_time = glfwGetTime();
+    worker->player = player;
+
+    engine_reset_stop();
+
+#ifdef _WIN32
+    worker->thread_handle = CreateThread(NULL, 0, ai_thread_func, worker, 0, NULL);
+#else
+    pthread_create(&worker->thread_handle, NULL, ai_thread_func, worker);
+#endif
+}
+
+static void ai_worker_wait_and_close(AIWorker *worker) {
+    if (!worker->is_running) return;
+    engine_request_stop();
+#ifdef _WIN32
+    if (worker->thread_handle) {
+        WaitForSingleObject(worker->thread_handle, 1000);
+        CloseHandle(worker->thread_handle);
+        worker->thread_handle = NULL;
+    }
+#else
+    if (worker->thread_handle) {
+        pthread_join(worker->thread_handle, NULL);
+        worker->thread_handle = 0;
+    }
+#endif
+    worker->is_running = false;
+    worker->finished = false;
+}
 
 int main(int argc, char **argv) {
     if (argc > 1) {
@@ -44,15 +145,24 @@ int main(int argc, char **argv) {
     
     UIContext ui;
     ui_init(&ui);
+    s_global_ui = &ui;
+
+    glfwSetCharCallback(win.handle, char_callback);
+    glfwSetKeyCallback(win.handle, key_callback);
     
     GameState game;
-    game_init(&game, MODE_2PLAYER, PLAYER_WHITE, ENGINE_TYPE_RANDOM, ENGINE_TYPE_RANDOM);
+    game_init(&game, MODE_2PLAYER, PLAYER_WHITE, ENGINE_TYPE_MCTS_UCB1, ENGINE_TYPE_MCTS_PUCT);
     
-    Engine white_engine = engine_create(ENGINE_TYPE_RANDOM);
-    Engine black_engine = engine_create(ENGINE_TYPE_RANDOM);
+    Engine white_engine = engine_create(ENGINE_TYPE_MCTS_UCB1);
+    Engine black_engine = engine_create(ENGINE_TYPE_MCTS_PUCT);
+    engine_apply_config(&white_engine, ENGINE_TYPE_MCTS_UCB1, &ui.engine_config);
+    engine_apply_config(&black_engine, ENGINE_TYPE_MCTS_PUCT, &ui.engine_config);
     
     PieceAnim piece_anim;
     piece_anim.active = false;
+
+    AIWorker ai_worker;
+    memset(&ai_worker, 0, sizeof(AIWorker));
     
     double last_mouse_x = 0.0, last_mouse_y = 0.0;
     bool right_mouse_pressed = false;
@@ -95,7 +205,7 @@ int main(int argc, char **argv) {
             right_mouse_pressed = false;
         }
         
-        // Left Mouse Button Click Detection (Edge triggered on release or press)
+        // Left Mouse Button Click Detection
         int left_state = glfwGetMouseButton(win.handle, GLFW_MOUSE_BUTTON_LEFT);
         if (left_state == GLFW_PRESS && !left_mouse_was_pressed) {
             left_mouse_was_pressed = true;
@@ -103,8 +213,10 @@ int main(int argc, char **argv) {
             UIState prev_state = ui.state;
             bool handled_by_ui = ui_handle_click(&ui, &game, mouse_x, mouse_y);
             
-            // Check if UI transitioned to PLAYING -> trigger camera sweep animation!
+            // Check if UI transitioned states
             if (handled_by_ui && ui.state == UI_STATE_PLAYING && prev_state == UI_STATE_MAIN_MENU) {
+                ai_worker_wait_and_close(&ai_worker);
+
                 Player view_player = (game.mode == MODE_1PLAYER) ? game.human_player : PLAYER_WHITE;
                 camera_start_game_anim(&cam, view_player);
 
@@ -118,11 +230,15 @@ int main(int argc, char **argv) {
                 engine_apply_config(&white_engine, game.white_engine, &ui.engine_config);
                 engine_apply_config(&black_engine, game.black_engine, &ui.engine_config);
             } else if (handled_by_ui && ui.state == UI_STATE_MAIN_MENU && prev_state == UI_STATE_PLAYING) {
+                ai_worker_wait_and_close(&ai_worker);
+                ui.is_thinking = false;
                 camera_reset_menu_anim(&cam);
+            } else if (handled_by_ui && ui.state == UI_STATE_ENGINE_SETTINGS && prev_state == UI_STATE_PLAYING) {
+                ai_worker_wait_and_close(&ai_worker);
+                ui.is_thinking = false;
             }
-
             
-            if (!piece_anim.active && !handled_by_ui && ui.state == UI_STATE_PLAYING && !game.is_game_over) {
+            if (!piece_anim.active && !handled_by_ui && ui.state == UI_STATE_PLAYING && !game.is_game_over && !ai_worker.is_running) {
                 // Determine if current player is Human
                 bool is_human = false;
                 if (game.mode == MODE_2PLAYER) {
@@ -190,29 +306,48 @@ int main(int argc, char **argv) {
             left_mouse_was_pressed = false;
         }
         
-        // CPU Automatic Move Logic
+        // CPU Asynchronous Move Execution Logic
         if (ui.state == UI_STATE_PLAYING && !game.is_game_over && !piece_anim.active) {
             bool is_cpu_turn = false;
             Engine *active_engine = NULL;
             
+            EngineType active_type = ENGINE_TYPE_RANDOM;
             if (game.mode == MODE_CPUVSCPU) {
                 is_cpu_turn = true;
                 active_engine = (game.current_player == PLAYER_WHITE) ? &white_engine : &black_engine;
+                active_type = (game.current_player == PLAYER_WHITE) ? game.white_engine : game.black_engine;
             } else if (game.mode == MODE_1PLAYER && game.current_player != game.human_player) {
                 is_cpu_turn = true;
                 active_engine = (game.human_player == PLAYER_WHITE) ? &black_engine : &white_engine;
+                active_type = (game.human_player == PLAYER_WHITE) ? game.black_engine : game.white_engine;
             }
             
-            if (is_cpu_turn && active_engine) {
-                float delay = (game.mode == MODE_CPUVSCPU) ? 0.20f : 0.35f;
-                
-                if (current_time - last_cpu_move_time >= delay) {
-                    Player moving_player = game.current_player;
-                    double ai_start = glfwGetTime();
-                    Move cpu_move = active_engine->get_move(active_engine->internal_state, &game);
-                    double ai_elapsed = glfwGetTime() - ai_start;
+            if (ai_worker.is_running) {
+                // Poll live stats while AI worker is calculating
+                EngineStats live_st;
+                engine_get_stats(ai_worker.engine, ai_worker.engine_type, &live_st);
+                if (live_st.is_valid) {
+                    if (ai_worker.player == PLAYER_WHITE) {
+                        ui.white_stats = live_st;
+                    } else {
+                        ui.black_stats = live_st;
+                    }
+                }
 
-                    if (moving_player == PLAYER_WHITE) {
+                if (ai_worker.finished) {
+#ifdef _WIN32
+                    WaitForSingleObject(ai_worker.thread_handle, INFINITE);
+                    CloseHandle(ai_worker.thread_handle);
+                    ai_worker.thread_handle = NULL;
+#else
+                    pthread_join(ai_worker.thread_handle, NULL);
+                    ai_worker.thread_handle = 0;
+#endif
+                    ai_worker.is_running = false;
+                    ui.is_thinking = false;
+
+                    double ai_elapsed = glfwGetTime() - ai_worker.start_time;
+                    if (ai_worker.player == PLAYER_WHITE) {
                         ui.last_white_ai_time = ai_elapsed;
                         ui.has_white_ai_time = true;
                     } else {
@@ -220,13 +355,32 @@ int main(int argc, char **argv) {
                         ui.has_black_ai_time = true;
                     }
 
-                    if (!move_is_none(cpu_move)) {
-                        piece_anim_start(&piece_anim, &game, cpu_move, glfwGetTime());
-                        game_execute_move(&game, cpu_move);
+                    EngineStats final_st;
+                    engine_get_stats(ai_worker.engine, ai_worker.engine_type, &final_st);
+                    if (final_st.is_valid) {
+                        if (ai_worker.player == PLAYER_WHITE) {
+                            ui.white_stats = final_st;
+                        } else {
+                            ui.black_stats = final_st;
+                        }
+                    }
+
+                    if (!move_is_none(ai_worker.result_move) && !engine_is_stop_requested()) {
+                        piece_anim_start(&piece_anim, &game, ai_worker.result_move, glfwGetTime());
+                        game_execute_move(&game, ai_worker.result_move);
                         game.selected_row = -1;
                         game.selected_col = -1;
                     }
                     last_cpu_move_time = glfwGetTime();
+                }
+            } else if (is_cpu_turn && active_engine) {
+                float delay = (game.mode == MODE_CPUVSCPU) ? 0.20f : 0.35f;
+                
+                if (current_time - last_cpu_move_time >= delay) {
+                    ui.is_thinking = true;
+                    ui.thinking_start_time = glfwGetTime();
+                    ui.thinking_player = game.current_player;
+                    ai_worker_start(&ai_worker, active_engine, active_type, &game, game.current_player);
                 }
             }
         }
@@ -244,6 +398,7 @@ int main(int argc, char **argv) {
         window_swap_buffers(&win);
     }
     
+    ai_worker_wait_and_close(&ai_worker);
     engine_destroy(&white_engine);
     engine_destroy(&black_engine);
     graphics_cleanup(&gfx);

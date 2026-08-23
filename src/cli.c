@@ -9,6 +9,7 @@
 #include "wld_db.h"
 #include "wld_solver.h"
 #include "zobrist.h"
+#include "tune_ga.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -308,6 +309,7 @@ static void print_help(const char *prog_name) {
     printf("  --test-endgames       Evaluate WLD tablebase solving speed & conversion accuracy.\n");
     printf("  --test-opening-book   Evaluate Opening Book Database (ODB & BIN) throughput & accuracy.\n");
     printf("  --test-opening-tournament Run 50-game head-to-head match (ODB Assisted vs Baseline No-Book) & Elo benchmark.\n");
+    printf("  --tune, --tune-ga     Run automated Genetic Algorithm (GA) hyperparameter tuning.\n");
     printf("  --gui                 Launch the OpenGL/GLFW 3D graphical interface.\n");
     printf("  --help, -h            Show this help manual.\n\n");
     printf("MATCH & TOURNAMENT OPTIONS:\n");
@@ -319,17 +321,26 @@ static void print_help(const char *prog_name) {
     printf("  --black-book-mode=<mode> Opening book mode for Black (best, good, all, puct_guided, off)\n");
     printf("  --engines=<list>      Comma-separated engines for tournament, or 'all'\n");
     printf("                        Example: --engines=ucb1,puct,checkerboard,random\n");
-    printf("  --time=<seconds>, -T  Time budget per move in seconds (default: 1.0 for match, 0.2 for tournament)\n");
+    printf("  --time=<seconds>, -T  Time budget per move in seconds (default: 1.0 for match, 0.2 for tournament/tuning)\n");
     printf("  --white-time=<sec>    Asymmetric time budget for White engine\n");
     printf("  --black-time=<sec>    Asymmetric time budget for Black engine\n");
     printf("  --games=<N>, -n       Total number of games for match (default: 10)\n");
-    printf("  --games-per-pair=<N>  Games per pairing in tournament (default: 20)\n");
+    printf("  --games-per-pair=<N>  Games per pairing in tournament/tuning (default: 20 tournament, 2 tuning)\n");
     printf("  --threads=<N>, -j     Number of concurrent worker threads (e.g. --threads=4 or --threads=auto, default: 1)\n");
     printf("  --max-plies=<N>       Max plies before declaring draw (default: 250)\n");
     printf("  --opening-plies=<N>   Random opening plies for book diversity (default: 2)\n");
-    printf("  --csv=<filepath>, -o  Filepath to export match/tournament/benchmark results in CSV format\n");
+    printf("  --csv=<filepath>, -o  Filepath to export match/tournament/benchmark/tuning results in CSV format\n");
     printf("  --quiet, -q           Suppress real-time progress ticker on stderr\n");
     printf("  --verbose, -v         Print move-by-move notation and detailed logs\n\n");
+    printf("GENETIC ALGORITHM (GA) TUNING OPTIONS:\n");
+    printf("  --target=<engine>     Target engine model to tune: puct, ucb1 (default: puct)\n");
+    printf("  --pop=<N>, --population=<N> Population size (default: 16)\n");
+    printf("  --generations=<N>, --gens=<N> Number of evolutionary generations (default: 5)\n");
+    printf("  --mutation-rate=<f>   Probability of gene mutation (default: 0.20)\n");
+    printf("  --mutation-scale=<f>  Gaussian perturbation scale (default: 0.15)\n");
+    printf("  --crossover-rate=<f>  Probability of crossover (default: 0.80)\n");
+    printf("  --elite-count=<N>     Number of top elite individuals preserved (default: 2)\n");
+    printf("  --seed=<N>            Random seed for GA reproducibility\n\n");
     printf("OPENING BOOK (ODB) OPTIONS:\n");
     printf("  --book-backend=<type> Opening book backend: odb (Kingsrow 1.76M), bin (CheckerBoard 1.2M), none\n");
     printf("  --book-mode=<mode>    Opening book mode: best, good, all, puct_guided, off\n");
@@ -349,6 +360,8 @@ static void print_help(const char *prog_name) {
     printf("BENCHMARK OPTIONS:\n");
     printf("  --budget=<list>       Comma-separated time budgets in seconds (default: 0.2,1.0,3.0)\n\n");
     printf("EXAMPLES:\n");
+    printf("  # Automated GA Hyperparameter Tuning for PUCT model (16 pop, 5 gens, 8 threads):\n");
+    printf("  %s --tune --target=puct --pop=16 --generations=5 --time=0.2 --threads=8 --csv=results/tune_puct.csv\n\n", prog_name);
     printf("  # Single match between UCB1 and PUCT (10 games, 1.0s/move, 4 threads):\n");
     printf("  %s --match --white=ucb1 --black=puct --time=1.0 --games=10 --threads=4 --csv=results/match.csv\n\n", prog_name);
     printf("  # Parallel Round-Robin Tournament across 4 engines (8 threads):\n");
@@ -390,6 +403,8 @@ static void init_default_cli_config(CliConfig *cfg) {
     engine_config_init_default(&cfg->engine_config);
     cfg->wld_backend = cfg->engine_config.wld_backend;
     cfg->wld_path[0] = '\0';
+
+    ga_config_init_default(&cfg->ga_config, ENGINE_TYPE_MCTS_PUCT);
     
     cfg->quiet = false;
     cfg->verbose = false;
@@ -411,6 +426,10 @@ static bool parse_cli_args(int argc, char **argv, CliConfig *cfg) {
         } else if (strcmp(arg, "--tournament") == 0 || strcmp(arg, "-t") == 0) {
             cfg->mode = CLI_MODE_TOURNAMENT;
             if (cfg->time_budget == 1.0) cfg->time_budget = 0.20; // Default fast budget for tournaments
+        } else if (strcmp(arg, "--tune") == 0 || strcmp(arg, "--tune-ga") == 0) {
+            cfg->mode = CLI_MODE_TUNE_GA;
+            if (cfg->time_budget == 1.0) cfg->time_budget = 0.20; // Default fast budget for GA tuning
+            cfg->games_per_pair = 2;
         } else if (strcmp(arg, "--bench") == 0 || strcmp(arg, "-b") == 0) {
             cfg->mode = CLI_MODE_BENCH;
         } else if (strcmp(arg, "--test-endgames") == 0) {
@@ -601,6 +620,34 @@ static bool parse_cli_args(int argc, char **argv, CliConfig *cfg) {
             cfg->quiet = true;
         } else if (strcmp(arg, "--verbose") == 0 || strcmp(arg, "-v") == 0) {
             cfg->verbose = true;
+        } else if (strncmp(arg, "--target=", 9) == 0) {
+            EngineType t = parse_engine_name(arg + 9);
+            if (t == ENGINE_TYPE_MCTS_PUCT || t == ENGINE_TYPE_MCTS_UCB1) {
+                cfg->ga_config.target_engine = t;
+            } else {
+                fprintf(stderr, "Warning: Tuning target engine must be 'puct' or 'ucb1'. Defaulting to PUCT.\n");
+            }
+        } else if (strncmp(arg, "--pop=", 6) == 0 || strncmp(arg, "--population=", 13) == 0) {
+            const char *val = (arg[5] == '=') ? arg + 6 : arg + 13;
+            cfg->ga_config.population_size = atoi(val);
+            if (cfg->ga_config.population_size < 2) cfg->ga_config.population_size = 2;
+            if (cfg->ga_config.population_size > GA_MAX_POPULATION) cfg->ga_config.population_size = GA_MAX_POPULATION;
+        } else if (strncmp(arg, "--generations=", 14) == 0 || strncmp(arg, "--gens=", 7) == 0) {
+            const char *val = (arg[3] == 'e') ? arg + 14 : arg + 7;
+            cfg->ga_config.generations = atoi(val);
+            if (cfg->ga_config.generations < 1) cfg->ga_config.generations = 1;
+        } else if (strncmp(arg, "--mutation-rate=", 16) == 0) {
+            cfg->ga_config.mutation_rate = (float)atof(arg + 16);
+        } else if (strncmp(arg, "--mutation-scale=", 17) == 0) {
+            cfg->ga_config.mutation_scale = (float)atof(arg + 17);
+        } else if (strncmp(arg, "--crossover-rate=", 17) == 0) {
+            cfg->ga_config.crossover_rate = (float)atof(arg + 17);
+        } else if (strncmp(arg, "--elite-count=", 14) == 0 || strncmp(arg, "--elites=", 9) == 0) {
+            const char *val = (arg[3] == 't') ? arg + 14 : arg + 9;
+            cfg->ga_config.elite_count = atoi(val);
+            if (cfg->ga_config.elite_count < 0) cfg->ga_config.elite_count = 0;
+        } else if (strncmp(arg, "--seed=", 7) == 0) {
+            cfg->ga_config.seed = (uint32_t)strtoul(arg + 7, NULL, 10);
         } else if (strncmp(arg, "--alpha=", 8) == 0) {
             cfg->engine_config.mcts_exploration = (float)atof(arg + 8);
         } else if (strncmp(arg, "--c-puct=", 9) == 0) {
@@ -1936,6 +1983,21 @@ static int run_test_opening_tournament_mode(const CliConfig *cfg) {
     return ret;
 }
 
+static int run_tune_ga_mode(const CliConfig *cfg) {
+    GAConfig ga_cfg = cfg->ga_config;
+    if (cfg->time_budget > 0.0) ga_cfg.time_budget = cfg->time_budget;
+    if (cfg->games_per_pair > 0) ga_cfg.games_per_pair = cfg->games_per_pair;
+    if (cfg->threads > 0) ga_cfg.threads = cfg->threads;
+    if (cfg->max_plies > 0) ga_cfg.max_plies = cfg->max_plies;
+    if (cfg->opening_plies >= 0) ga_cfg.opening_plies = cfg->opening_plies;
+    if (cfg->csv_path[0] != '\0') snprintf(ga_cfg.csv_path, sizeof(ga_cfg.csv_path), "%s", cfg->csv_path);
+    ga_cfg.quiet = cfg->quiet;
+    ga_cfg.verbose = cfg->verbose;
+
+    GAResult res;
+    return tune_ga_run(&ga_cfg, &res);
+}
+
 int cli_run(int argc, char **argv) {
     CliConfig cfg;
     if (!parse_cli_args(argc, argv, &cfg)) {
@@ -1950,6 +2012,8 @@ int cli_run(int argc, char **argv) {
             return run_match_mode(&cfg);
         case CLI_MODE_TOURNAMENT:
             return run_tournament_mode(&cfg);
+        case CLI_MODE_TUNE_GA:
+            return run_tune_ga_mode(&cfg);
         case CLI_MODE_BENCH:
             return run_benchmark_mode(&cfg);
         case CLI_MODE_TEST_ENDGAMES:
@@ -1963,3 +2027,4 @@ int cli_run(int argc, char **argv) {
             return 0;
     }
 }
+

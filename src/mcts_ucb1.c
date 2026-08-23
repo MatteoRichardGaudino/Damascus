@@ -35,6 +35,7 @@ typedef struct {
     Move               prev_ai_move;
     TranspositionTable tt;
     uint16_t           search_epoch;
+    EngineStats        last_stats;
 } MCTSEngineState;
 
 // Per-thread dynamic preallocated memory pool of 2,000,000 nodes (~48 MB per active thread)
@@ -527,8 +528,11 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
     const double budget = st->time_budget;
 
     while (1) {
-        // Non-blocking time check strictly every 1024 iterations
-        if ((iterations & 1023) == 0 && iterations > 0) {
+        // Non-blocking time and stop check strictly every 512 iterations
+        if ((iterations & 511) == 0 && iterations > 0) {
+            if (engine_is_stop_requested()) {
+                break;
+            }
             double elapsed = mcts_get_time() - start_time;
             if (elapsed >= budget) {
                 break;
@@ -790,6 +794,16 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
         fflush(stdout);
     }
 
+    // Record stats
+    double final_elapsed = mcts_get_time() - start_time;
+    st->last_stats.last_time = final_elapsed;
+    st->last_stats.nodes_used = s_pool_tail;
+    st->last_stats.nodes_max = MCTS_MAX_NODES;
+    st->last_stats.iterations = iterations;
+    st->last_stats.iterations_sec = (final_elapsed > 0.0001) ? ((double)iterations / final_elapsed) : 0.0;
+    st->last_stats.win_rate = (max_q >= 0.0f) ? max_q : 0.5f;
+    st->last_stats.is_valid = true;
+
     // Record for future subtree promotion
     st->has_prev_state = true;
     st->prev_game_state = *game;
@@ -798,4 +812,8 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
     return selected_move;
 }
 
-
+void engine_mcts_ucb1_get_stats(void *state, EngineStats *out_stats) {
+    if (!state || !out_stats) return;
+    MCTSEngineState *st = (MCTSEngineState*)state;
+    *out_stats = st->last_stats;
+}

@@ -48,6 +48,7 @@ void engine_mcts_puct_set_book_temperature(void *state, float tau);
 void engine_mcts_puct_set_debug_log(void *state, bool enable);
 uint32_t engine_mcts_puct_get_node_count(void);
 uint32_t engine_mcts_puct_get_root_visits(void *state);
+void engine_mcts_puct_get_stats(void *state, EngineStats *out_stats);
 
 // Fast domain heuristic function H(s, a)
 float puct_compute_heuristic(const GameState *state, Move move);

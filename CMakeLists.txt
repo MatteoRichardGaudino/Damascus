@@ -46,6 +46,7 @@ set(SOURCES
     src/wld_egdb.c
     src/wld_solver.c
     src/opening_book.c
+    src/tune_ga.c
     src/interaction.c
     src/ui.c
     src/cli.c
@@ -187,6 +188,35 @@ else()
     target_link_libraries(test_cb_study PRIVATE Threads::Threads m)
 endif()
 
-set_tests_properties(test_wld test_wld_solver test_opening_book PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+add_executable(test_tune_ga
+    tests/test_tune_ga.c
+    src/game.c
+    src/engine_random.c
+    src/engine_checkerboard.c
+    src/engine_kingsrow.c
+    src/mcts_ucb1.c
+    src/mcts_puct.c
+    src/zobrist.c
+    src/transposition.c
+    src/wld_db.c
+    src/wld_egdb.c
+    src/wld_solver.c
+    src/opening_book.c
+    src/tune_ga.c
+)
+
+target_include_directories(test_tune_ga PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+if(WIN32)
+    target_link_libraries(test_tune_ga PRIVATE Threads::Threads)
+else()
+    target_link_libraries(test_tune_ga PRIVATE Threads::Threads m)
+endif()
+
+add_test(NAME test_tune_ga COMMAND test_tune_ga)
+
+set_tests_properties(test_wld test_wld_solver test_opening_book test_tune_ga PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 

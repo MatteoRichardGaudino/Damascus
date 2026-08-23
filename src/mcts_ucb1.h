@@ -45,7 +45,7 @@ void engine_mcts_ucb1_set_book_temperature(void *state, float tau);
 void engine_mcts_ucb1_set_debug_log(void *state, bool enable);
 uint32_t engine_mcts_ucb1_get_node_count(void);
 uint32_t engine_mcts_ucb1_get_root_visits(void *state);
-
+void engine_mcts_ucb1_get_stats(void *state, EngineStats *out_stats);
 
 #endif // MCTS_UCB1_H
 

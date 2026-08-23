@@ -751,4 +751,18 @@ bool game_execute_move(GameState *game, Move move) {
     return true;
 }
 
+static volatile bool s_engine_stop_flag = false;
+
+void engine_request_stop(void) {
+    s_engine_stop_flag = true;
+}
+
+void engine_reset_stop(void) {
+    s_engine_stop_flag = false;
+}
+
+bool engine_is_stop_requested(void) {
+    return s_engine_stop_flag;
+}
+
 

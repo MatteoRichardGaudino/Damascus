@@ -385,11 +385,12 @@ WLDValue wld_egdb_probe(const GameState *game) {
     int color = (game->current_player == PLAYER_WHITE) ? 0 : 1;
     int res = s_egdb_handle->lookup(s_egdb_handle, &pos, color, 0);
 
-    if (res == 1) { // WIN for current player
+    // Kingsrow EGDB return codes: 2 = WIN, 1 = DRAW, 0 = LOSS (relative to color to move)
+    if (res == 2) { // WIN for player to move
         return (game->current_player == PLAYER_WHITE) ? WLD_WIN_WHITE : WLD_WIN_BLACK;
-    } else if (res == 2) { // LOSS for current player
+    } else if (res == 0) { // LOSS for player to move
         return (game->current_player == PLAYER_WHITE) ? WLD_WIN_BLACK : WLD_WIN_WHITE;
-    } else if (res == 0) { // DRAW
+    } else if (res == 1) { // DRAW
         return WLD_DRAW;
     }
 
