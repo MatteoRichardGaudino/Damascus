@@ -292,12 +292,50 @@ static bool init_checkerboard_bin(const char *path) {
     return true;
 }
 
-bool opening_book_init(BookBackendType backend, const char *custom_path) {
-    opening_book_cleanup();
+#ifdef _WIN32
+static CRITICAL_SECTION s_book_cs;
+static bool s_book_cs_inited = false;
+static inline void book_lock(void) {
+    if (!s_book_cs_inited) {
+        InitializeCriticalSection(&s_book_cs);
+        s_book_cs_inited = true;
+    }
+    EnterCriticalSection(&s_book_cs);
+}
+static inline void book_unlock(void) {
+    LeaveCriticalSection(&s_book_cs);
+}
+#else
+#include <pthread.h>
+static pthread_mutex_t s_book_mutex = PTHREAD_MUTEX_INITIALIZER;
+static inline void book_lock(void) { pthread_mutex_lock(&s_book_mutex); }
+static inline void book_unlock(void) { pthread_mutex_unlock(&s_book_mutex); }
+#endif
 
+bool opening_book_init(BookBackendType backend, const char *custom_path) {
+    book_lock();
     if (backend == BOOK_BACKEND_NONE) {
+        opening_book_cleanup();
+        book_unlock();
         return true;
     }
+
+    if (s_book.loaded && s_book.backend == backend) {
+        if (!custom_path && s_custom_book_path[0] == '\0') {
+            book_unlock();
+            return true;
+        }
+        if (custom_path && strcmp(s_custom_book_path, custom_path) == 0) {
+            book_unlock();
+            return true;
+        }
+    }
+
+    if (s_book.raw_buffer) {
+        free(s_book.raw_buffer);
+        s_book.raw_buffer = NULL;
+    }
+    memset(&s_book, 0, sizeof(OpeningBookEngine));
 
     char resolved_path[512] = {0};
     if (!find_book_path(backend, custom_path, resolved_path, sizeof(resolved_path))) {
@@ -306,28 +344,34 @@ bool opening_book_init(BookBackendType backend, const char *custom_path) {
             if (find_book_path(BOOK_BACKEND_CHECKERBOARD_BIN, NULL, resolved_path, sizeof(resolved_path))) {
                 backend = BOOK_BACKEND_CHECKERBOARD_BIN;
             } else {
+                book_unlock();
                 return false;
             }
         } else {
+            book_unlock();
             return false;
         }
     }
 
+    bool ok = false;
     if (backend == BOOK_BACKEND_KINGSROW_ODB) {
-        return init_kingsrow_odb(resolved_path);
+        ok = init_kingsrow_odb(resolved_path);
     } else if (backend == BOOK_BACKEND_CHECKERBOARD_BIN) {
-        return init_checkerboard_bin(resolved_path);
+        ok = init_checkerboard_bin(resolved_path);
     }
 
-    return false;
+    book_unlock();
+    return ok;
 }
 
 void opening_book_cleanup(void) {
+    book_lock();
     if (s_book.raw_buffer) {
         free(s_book.raw_buffer);
         s_book.raw_buffer = NULL;
     }
     memset(&s_book, 0, sizeof(OpeningBookEngine));
+    book_unlock();
 }
 
 OpeningBookStatus opening_book_get_status(void) {

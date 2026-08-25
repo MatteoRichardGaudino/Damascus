@@ -159,6 +159,9 @@ static inline Move mcts_select_biased_rollout_move(const GameState *state, const
         }
     }
 
+    if (best_count == 0) {
+        return ml->moves[0];
+    }
     if (best_count == 1) {
         return ml->moves[best_indices[0]];
     }

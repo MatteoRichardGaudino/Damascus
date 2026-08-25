@@ -71,7 +71,9 @@ static inline uint32_t xorshift32(uint32_t *state) {
 
 static void pool_ensure(void) {
     if (!s_node_pool) {
-        s_node_pool = (MCTSNode*)malloc(sizeof(MCTSNode) * MCTS_MAX_NODES);
+        s_node_pool = (MCTSNode*)calloc(MCTS_MAX_NODES, sizeof(MCTSNode));
+        s_pool_tail = 0;
+        s_pool_owner = NULL;
     }
 }
 
@@ -124,6 +126,16 @@ void engine_mcts_ucb1_init(void **state) {
     st->search_epoch = 1;
     tt_init(&st->tt, TT_DEFAULT_SIZE);
     *state = st;
+}
+
+void engine_mcts_ucb1_reset(void *state) {
+    if (!state) return;
+    MCTSEngineState *st = (MCTSEngineState*)state;
+    st->has_prev_state = false;
+    st->root_idx = UINT32_MAX;
+    st->prev_ai_move = MOVE_NONE;
+    tt_clear(&st->tt);
+    st->search_epoch = 1;
 }
 
 void engine_mcts_ucb1_cleanup(void *state) {
@@ -367,6 +379,8 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
     MCTSEngineState *st = (MCTSEngineState*)state;
     Player ai_player = game->current_player;
 
+    pool_ensure();
+
     // Check valid moves at current state
     MoveList root_valid_moves = *game_get_valid_moves(game);
     if (root_valid_moves.count == 0) {
@@ -381,18 +395,18 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
                    MOVE_TO(fm), SQ_TO_ROW(MOVE_TO(fm)), SQ_TO_COL(MOVE_TO(fm)));
             fflush(stdout);
         }
-        st->has_prev_state = true;
-        st->prev_game_state = *game;
-        st->prev_ai_move = root_valid_moves.moves[0];
+        st->has_prev_state = false;
+        st->root_idx = UINT32_MAX;
+        st->prev_ai_move = MOVE_NONE;
         return root_valid_moves.moves[0];
     }
 
     // Direct Database Mode: If enabled and board is within tablebase endgame range, use shortest-win solver!
     if (st->use_db && wld_solver_is_applicable(game)) {
         Move db_move = mcts_select_database_move(game, st->debug_log);
-        st->has_prev_state = true;
-        st->prev_game_state = *game;
-        st->prev_ai_move = db_move;
+        st->has_prev_state = false;
+        st->root_idx = UINT32_MAX;
+        st->prev_ai_move = MOVE_NONE;
         return db_move;
     }
 
@@ -407,9 +421,9 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
                        st->book_mode);
                 fflush(stdout);
             }
-            st->has_prev_state = true;
-            st->prev_game_state = *game;
-            st->prev_ai_move = book_move;
+            st->has_prev_state = false;
+            st->root_idx = UINT32_MAX;
+            st->prev_ai_move = MOVE_NONE;
             return book_move;
         }
     }
@@ -421,15 +435,17 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
         st->root_idx = UINT32_MAX;
     }
 
+    pool_ensure();
+
     // Subtree Promotion (Tree Reuse with 64-bit Zobrist Hash)
     bool tree_reused = false;
     if (s_pool_owner == st && st->has_prev_state && st->root_idx != UINT32_MAX && st->root_idx < s_pool_tail) {
         // Find AI's previous move among old root's children
         uint32_t ai_child_idx = UINT32_MAX;
-        if (s_node_pool[st->root_idx].first_child_idx != UINT32_MAX) {
+        if (s_node_pool[st->root_idx].first_child_idx != UINT32_MAX && s_node_pool[st->root_idx].first_child_idx < s_pool_tail) {
             uint32_t fc = s_node_pool[st->root_idx].first_child_idx;
             uint8_t nc = s_node_pool[st->root_idx].num_children;
-            for (uint8_t i = 0; i < nc; i++) {
+            for (uint8_t i = 0; i < nc && (fc + i) < s_pool_tail; i++) {
                 if (move_equals(s_node_pool[fc + i].move, st->prev_ai_move)) {
                     ai_child_idx = fc + i;
                     break;
@@ -438,10 +454,11 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
         }
 
         // If AI's child node was found, look among its children for the opponent's response
-        if (ai_child_idx != UINT32_MAX && s_node_pool[ai_child_idx].first_child_idx != UINT32_MAX) {
+        if (ai_child_idx != UINT32_MAX && ai_child_idx < s_pool_tail &&
+            s_node_pool[ai_child_idx].first_child_idx != UINT32_MAX && s_node_pool[ai_child_idx].first_child_idx < s_pool_tail) {
             uint32_t opp_fc = s_node_pool[ai_child_idx].first_child_idx;
             uint8_t opp_nc = s_node_pool[ai_child_idx].num_children;
-            for (uint8_t j = 0; j < opp_nc; j++) {
+            for (uint8_t j = 0; j < opp_nc && (opp_fc + j) < s_pool_tail; j++) {
                 if (s_node_pool[opp_fc + j].hash == game->hash) {
                     // Subtree found via direct Zobrist 64-bit hash match! Promote to new root
                     st->root_idx = opp_fc + j;

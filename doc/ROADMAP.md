@@ -202,15 +202,15 @@ Aligned graphical interface with responsive asynchronous engine integration and 
 
 ---
 
-### Phase 7: Experimental Benchmarking & Academic Report Dataset
+### Phase 7: Experimental Benchmarking & Academic Report Dataset [COMPLETED]
 
-Generate empirical evidence required for the final evaluation report:
-- **Experiment 1 (Time Scaling)**: Win rate of MCTS UCB1 / PUCT as a function of time budget ($0.2\text{s}$ vs $1.0\text{s}$ vs $3.0\text{s}$).
-- **Experiment 2 (Policy Comparison)**: Head-to-head tournament between MCTS UCB1, MCTS PUCT, Checkerboard, and Kingsrow (at equal $0.2\text{s}$, $1.0\text{s}$, $3.0\text{s}$ limits).
-- **Experiment 3 (Rollout Throughput & Ablation)**:
-  - Throughput (simulations/sec) with pure random vs heuristic rollouts vs WLD tablebase cutoff.
-  - Subtree reuse efficiency (hit rate and retained node count).
-- Auto-export results to `results/tournament_results.csv` and summary tables.
+Generated empirical evidence and academic report in `doc/REPORT_ESPERIMENTI_FASE7.md` and `doc/results/`:
+- **Hyperparameter Tuning via GA**: Calibrated optimal parameters for PUCT (85.7% win rate, Elo 1811) and UCB1 (69.4% win rate, Elo 1642).
+- **Experiment 1 (Time Scaling)**: Win rate of MCTS PUCT vs UCB1 at $0.2\text{s}$ (PUCT 80% score rate, +241 Elo).
+- **Experiment 2 (Policy Comparison)**: Head-to-head tournament between MCTS PUCT, MCTS UCB1, CheckerBoard, Kingsrow, and Random across 3 time profiles ($0.2\text{s}$, $1.0\text{s}$, $3.0\text{s}$).
+- **Experiment 3 (Rollout Throughput & Ablation)**: Measured 86.9k NPS (uniform) vs 82.2k NPS (domain-biased FID) and validated WLD tablebase impact.
+- **Experiment 4 (Opening Book & Endgame Solver)**: 50-game tournament (85.0% score rate, +295 Elo) and 100% pass rate on theoretical endgame benchmarks.
+- Auto-exported all empirical data to `doc/results/*.csv` and `doc/results/manifest.json`.
 
 ---
 

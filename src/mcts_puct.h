@@ -33,6 +33,7 @@ typedef struct {
 // Engine Lifecycle & Move API
 void engine_mcts_puct_init(void **state);
 Move engine_mcts_puct_get_move(void *state, const GameState *game);
+void engine_mcts_puct_reset(void *state);
 void engine_mcts_puct_cleanup(void *state);
 
 // Configuration API

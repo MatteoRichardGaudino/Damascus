@@ -152,6 +152,15 @@ Engine engine_create(EngineType type) {
     return eng;
 }
 
+void engine_reset(Engine *engine, EngineType type) {
+    if (!engine || !engine->internal_state) return;
+    if (type == ENGINE_TYPE_MCTS_PUCT) {
+        engine_mcts_puct_reset(engine->internal_state);
+    } else if (type == ENGINE_TYPE_MCTS_UCB1) {
+        engine_mcts_ucb1_reset(engine->internal_state);
+    }
+}
+
 void engine_destroy(Engine *engine) {
     if (engine && engine->cleanup && engine->internal_state) {
         engine->cleanup(engine->internal_state);

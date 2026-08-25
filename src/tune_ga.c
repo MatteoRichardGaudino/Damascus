@@ -126,7 +126,7 @@ void ga_config_init_default(GAConfig *cfg, EngineType target_engine) {
     cfg->generations = GA_DEFAULT_GENERATIONS;
     cfg->games_per_pair = GA_DEFAULT_GAMES_PER_PAIR;
     cfg->time_budget = GA_DEFAULT_TIME_BUDGET;
-    cfg->max_plies = 250;
+    cfg->max_plies = 80;
     cfg->opening_plies = 2;
     cfg->mutation_rate = GA_DEFAULT_MUTATION_RATE;
     cfg->mutation_scale = GA_DEFAULT_MUTATION_SCALE;
@@ -393,6 +393,9 @@ static void ga_play_match_game(const GAConfig *cfg, Engine *white_eng, Engine *b
                                bool *out_is_draw, Player *out_winner) {
     GameState game;
     game_init(&game, MODE_CPUVSCPU, PLAYER_WHITE, cfg->target_engine, cfg->target_engine);
+
+    engine_reset(white_eng, cfg->target_engine);
+    engine_reset(black_eng, cfg->target_engine);
 
     ga_apply_chromosome_to_engine(white_chr, cfg->target_engine, white_eng->internal_state, cfg->time_budget);
     ga_apply_chromosome_to_engine(black_chr, cfg->target_engine, black_eng->internal_state, cfg->time_budget);
@@ -715,9 +718,19 @@ void ga_population_evolve(Population *pop, const GAConfig *cfg, uint32_t *rng) {
         }
     }
 
-    // Copy next generation into population
+    // Copy next generation into population and zero all generation match statistics
     for (int i = 0; i < pop->size; i++) {
         pop->individuals[i] = next_gen[i];
+        pop->individuals[i].games_played = 0;
+        pop->individuals[i].wins = 0;
+        pop->individuals[i].draws = 0;
+        pop->individuals[i].losses = 0;
+        pop->individuals[i].points = 0.0;
+        pop->individuals[i].score_pct = 0.0;
+        pop->individuals[i].elo = 1500.0;
+        pop->individuals[i].fitness = 0.0;
+        pop->individuals[i].total_time_spent = 0.0;
+        pop->individuals[i].total_moves = 0;
     }
     pop->generation++;
 }

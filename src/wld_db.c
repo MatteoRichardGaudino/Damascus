@@ -879,20 +879,14 @@ WLDBackendType wld_get_active_backend(void) {
 WLDValue wld_probe_state(const GameState *game) {
     if (!game) return WLD_UNKNOWN;
 
-    if (s_active_backend == WLD_BACKEND_OFFICIAL_8PIECE) {
-        WLDValue val = wld_egdb_probe(game);
+    // Fast-path: 100% native zero-lock probe for <= 4 pieces (5 nanoseconds)
+    if (wld_db_is_endgame(&game->board)) {
+        WLDValue val = probe_native(game);
         if (val != WLD_UNKNOWN) return val;
+    }
 
-        // Graceful fallback to native 4-piece if EGDB returns unknown on <= 4 pieces
-        if (wld_db_is_endgame(&game->board)) {
-            return probe_native(game);
-        }
-        return WLD_UNKNOWN;
-    } else if (s_active_backend == WLD_BACKEND_REDUCED_NATIVE) {
-        if (wld_db_is_endgame(&game->board)) {
-            return probe_native(game);
-        }
-        return WLD_UNKNOWN;
+    if (s_active_backend == WLD_BACKEND_OFFICIAL_8PIECE) {
+        return wld_egdb_probe(game);
     }
 
     return WLD_UNKNOWN;

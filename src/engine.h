@@ -59,6 +59,7 @@ typedef enum {
 
 // Helper to create an engine instance by EngineType
 Engine engine_create(EngineType type);
+void engine_reset(Engine *engine, EngineType type);
 void engine_destroy(Engine *engine);
 void engine_config_init_default(EngineConfig *cfg);
 void engine_config_set_time_profile(EngineConfig *cfg, TimeProfile profile);

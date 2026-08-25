@@ -591,6 +591,20 @@ static bool parse_cli_args(int argc, char **argv, CliConfig *cfg) {
             cfg->engine_config.book_mode = BOOK_MODE_OFF;
             cfg->engine_config.mcts_use_book = false;
             cfg->engine_config.puct_use_book = false;
+        } else if (strcmp(arg, "--book") == 0) {
+            cfg->engine_config.book_mode = BOOK_MODE_BEST;
+            cfg->engine_config.mcts_use_book = true;
+            cfg->engine_config.puct_use_book = true;
+        } else if (strcmp(arg, "--no-db") == 0 || strcmp(arg, "--no-wld") == 0) {
+            cfg->wld_backend = WLD_BACKEND_NONE;
+            cfg->engine_config.wld_backend = WLD_BACKEND_NONE;
+            cfg->engine_config.mcts_use_db = false;
+            cfg->engine_config.puct_use_db = false;
+        } else if (strcmp(arg, "--db") == 0 || strcmp(arg, "--wld") == 0) {
+            cfg->wld_backend = WLD_BACKEND_OFFICIAL_8PIECE;
+            cfg->engine_config.wld_backend = WLD_BACKEND_OFFICIAL_8PIECE;
+            cfg->engine_config.mcts_use_db = true;
+            cfg->engine_config.puct_use_db = true;
         } else if (strncmp(arg, "--wld-backend=", 14) == 0) {
             WLDBackendType b = wld_backend_parse(arg + 14);
             cfg->wld_backend = b;
@@ -1999,6 +2013,9 @@ static int run_tune_ga_mode(const CliConfig *cfg) {
 }
 
 int cli_run(int argc, char **argv) {
+    zobrist_init();
+    wld_db_init();
+
     CliConfig cfg;
     if (!parse_cli_args(argc, argv, &cfg)) {
         return 1;

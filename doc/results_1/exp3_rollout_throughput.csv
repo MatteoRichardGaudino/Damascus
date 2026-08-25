@@ -1,0 +1,3 @@
+metric,model,budget_sec,time_elapsed_sec,visits_or_nodes,throughput_per_sec
+rollout,biased_FID,0,0.3041,25000,82215.6
+rollout,uniform_random,0,0.2874,25000,86978.5

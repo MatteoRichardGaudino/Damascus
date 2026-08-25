@@ -19,7 +19,7 @@ ______________________________________________________________________________*/
 #define OCCUPIED 0
 #define FREE 16
 #define MAXDEPTH 64
-#define MAXMOVES 32
+#define MAXMOVES 128
 
 #define CB_CHANGECOLOR(color) ((color) ^ (CB_WHITE | CB_BLACK))
 
@@ -34,14 +34,14 @@ typedef struct {
     int oldpiece;
     CBCoor from;
     CBCoor to;
-    CBCoor path[12];
-    CBCoor del[12];
-    int delpiece[12];
+    CBCoor path[32];
+    CBCoor del[32];
+    int delpiece[32];
 } CBCBMove;
 
 typedef struct {
     short n;
-    int m[12];
+    int m[32];
 } CBMove2;
 
 typedef struct {
@@ -548,6 +548,7 @@ static int generatemovelist(int b[46], CBMove2 movelist[MAXMOVES], int color) {
 
 // Italian Checkers Capture Generators & Law of Maximum Priority Filtering
 static void blackmancapture(int b[46], int *n, CBMove2 movelist[MAXMOVES], int square) {
+    if (!n || *n >= MAXMOVES - 2) return;
     int found = 0;
     int i = square;
     CBMove2 orgmove = movelist[*n];
@@ -596,6 +597,7 @@ static void blackmancapture(int b[46], int *n, CBMove2 movelist[MAXMOVES], int s
 }
 
 static void blackkingcapture(int b[46], int *n, CBMove2 movelist[MAXMOVES], int square) {
+    if (!n || *n >= MAXMOVES - 2) return;
     int found = 0;
     int i = square;
     CBMove2 orgmove = movelist[*n];
@@ -676,6 +678,7 @@ static void blackkingcapture(int b[46], int *n, CBMove2 movelist[MAXMOVES], int 
 }
 
 static void whitemancapture(int b[46], int *n, CBMove2 movelist[MAXMOVES], int square) {
+    if (!n || *n >= MAXMOVES - 2) return;
     int found = 0;
     int i = square;
     CBMove2 orgmove = movelist[*n];
@@ -724,6 +727,7 @@ static void whitemancapture(int b[46], int *n, CBMove2 movelist[MAXMOVES], int s
 }
 
 static void whitekingcapture(int b[46], int *n, CBMove2 movelist[MAXMOVES], int square) {
+    if (!n || *n >= MAXMOVES - 2) return;
     int found = 0;
     int i = square;
     CBMove2 orgmove = movelist[*n];

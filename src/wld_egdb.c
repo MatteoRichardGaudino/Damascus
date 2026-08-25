@@ -42,6 +42,8 @@ static HMODULE s_egdb_module = NULL;
 static EGDB_DRIVER *s_egdb_handle = NULL;
 static egdb_identify_fn s_fn_identify = NULL;
 static egdb_open_fn s_fn_open = NULL;
+static CRITICAL_SECTION s_egdb_cs;
+static bool s_egdb_cs_inited = false;
 #endif
 
 static bool s_is_ready = false;
@@ -269,6 +271,11 @@ bool wld_egdb_init(const char *db_dir, int cache_mb) {
         return false;
     }
 
+    if (!s_egdb_cs_inited) {
+        InitializeCriticalSection(&s_egdb_cs);
+        s_egdb_cs_inited = true;
+    }
+
     s_max_pieces = max_pieces;
     size_t missing = 0;
     s_loaded_slices = wld_egdb_scan_slices(resolved_dir, NULL, &missing);
@@ -322,9 +329,8 @@ int wld_egdb_lookup_raw(EGDB_POSITION *pos, int color, int cl) {
 
 WLDValue wld_egdb_probe(const GameState *game) {
 #ifdef _WIN32
-    if (!s_is_ready || !s_egdb_handle || !game) {
-        return WLD_UNKNOWN;
-    }
+    if (!game) return WLD_UNKNOWN;
+    if (!s_is_ready || !s_egdb_handle || !s_egdb_handle->lookup) return WLD_UNKNOWN;
 
     // Direct game terminal check
     if (game->is_game_over) {
@@ -375,15 +381,40 @@ WLDValue wld_egdb_probe(const GameState *game) {
         return WLD_DRAW;
     }
 
+    // Validate piece positions for EGDB engine constraints:
+    // Men cannot be on opponent promotion ranks in quiescent positions
+    if ((wm & 0xF0000000U) || (bm & 0x0000000FU)) {
+        return WLD_UNKNOWN;
+    }
+
     // Direct quiescent EGDB lookup
     EGDB_POSITION pos;
     pos.white = wm | wk;
     pos.black = bm | bk;
     pos.king  = wk | bk;
 
+    if (pos.white == 0 || pos.black == 0 || (pos.white & pos.black) != 0) {
+        return WLD_UNKNOWN;
+    }
+
     // EGDB side to move: 0 = White, 1 = Black
     int color = (game->current_player == PLAYER_WHITE) ? 0 : 1;
-    int res = s_egdb_handle->lookup(s_egdb_handle, &pos, color, 0);
+    int res = -1;
+
+    if (s_egdb_cs_inited) {
+        EnterCriticalSection(&s_egdb_cs);
+        __try {
+            res = s_egdb_handle->lookup(s_egdb_handle, &pos, color, 0);
+        } __finally {
+            LeaveCriticalSection(&s_egdb_cs);
+        }
+    } else {
+        __try {
+            res = s_egdb_handle->lookup(s_egdb_handle, &pos, color, 0);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            res = -1;
+        }
+    }
 
     // Kingsrow EGDB return codes: 2 = WIN, 1 = DRAW, 0 = LOSS (relative to color to move)
     if (res == 2) { // WIN for player to move

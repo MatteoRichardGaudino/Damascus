@@ -1,0 +1,63 @@
+{
+  "tune_ga_puct": {
+    "status": "completed",
+    "name": "GA Hyperparameter Tuning (MCTS PUCT)",
+    "csv": "doc\\results\\tune_ga_puct.csv",
+    "elapsed_seconds": 94.30744290351868,
+    "timestamp": "2026-08-24 16:13:45"
+  },
+  "tune_ga_ucb1": {
+    "status": "completed",
+    "name": "GA Hyperparameter Tuning (MCTS UCB1)",
+    "csv": "doc\\results\\tune_ga_ucb1.csv",
+    "elapsed_seconds": 92.81700658798218,
+    "timestamp": "2026-08-24 16:15:18"
+  },
+  "exp1_time_scaling": {
+    "status": "completed",
+    "name": "Experiment 1: Time Scaling & Inter-Engine Matching",
+    "csv": "doc\\results\\exp1_time_scaling.csv",
+    "elapsed_seconds": 21.662395477294922,
+    "timestamp": "2026-08-24 16:15:39"
+  },
+  "exp2_tournament_fast": {
+    "status": "completed",
+    "name": "Experiment 2.1: Head-to-Head Tournament (0.2s Fast)",
+    "csv": "doc\\results\\exp2_tournament_fast.csv",
+    "elapsed_seconds": 46.26427960395813,
+    "timestamp": "2026-08-24 16:16:26"
+  },
+  "exp2_tournament_medium": {
+    "status": "completed",
+    "name": "Experiment 2.2: Head-to-Head Tournament (1.0s Medium)",
+    "csv": "doc\\results\\exp2_tournament_medium.csv",
+    "elapsed_seconds": 154.08626556396484,
+    "timestamp": "2026-08-24 16:19:00"
+  },
+  "exp2_tournament_slow": {
+    "status": "completed",
+    "name": "Experiment 2.3: Head-to-Head Tournament (3.0s Slow)",
+    "csv": "doc\\results\\exp2_tournament_slow.csv",
+    "elapsed_seconds": 390.5636248588562,
+    "timestamp": "2026-08-24 16:29:00"
+  },
+  "exp3_throughput": {
+    "status": "completed",
+    "name": "Experiment 3.1: Search Throughput & MCTS Node Speed Benchmark",
+    "csv": "doc\\results\\exp3_rollout_throughput.csv",
+    "elapsed_seconds": 9.531684875488281,
+    "timestamp": "2026-08-24 16:29:10"
+  },
+  "exp3_ablation": {
+    "status": "completed",
+    "name": "Experiment 3.2: Ablation Matches",
+    "csv": "doc\\results\\exp3_ablation_matches.csv",
+    "elapsed_seconds": 27.622933387756348,
+    "timestamp": "2026-08-24 16:29:37"
+  },
+  "exp4_book_tour": {
+    "status": "failed",
+    "returncode": 3221225477,
+    "timestamp": "2026-08-24 16:29:46"
+  }
+}

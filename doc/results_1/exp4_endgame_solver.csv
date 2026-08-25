@@ -1,0 +1,6 @@
+id,scenario,outcome,best_move,depth_to_mate,nodes_visited,solve_time_ms,passed
+1,"2 Kings vs 1 King","WIN_W","00->04",0,56,1.570,1
+2,"3 Kings vs 1 King","WIN_W","00->04",0,110,0.033,1
+3,"2 Kings vs 2 Kings","DRAW","01->05",0,74,0.027,1
+4,"King + Man vs King","WIN_W","28->25",2,35,0.018,1
+5,"1 King vs 1 King","DRAW","00->04",0,1,0.000,1

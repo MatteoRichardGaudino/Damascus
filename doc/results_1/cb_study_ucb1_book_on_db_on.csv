@@ -1,0 +1,51 @@
+game_id,white_engine,black_engine,time_budget,winner_color,winner_engine,is_draw,reason,plies,white_avg_ms,black_avg_ms,duration_sec,white_pieces,black_pieces
+1,MCTS_UCB1,CheckerBoard,2.000,White,MCTS_UCB1,0,"Elimination / Block",87,606.04,1518.68,90.011,5,0
+2,CheckerBoard,MCTS_UCB1,2.000,Black,MCTS_UCB1,0,"Elimination / Block",56,1434.81,1558.18,81.115,1,6
+3,MCTS_UCB1,CheckerBoard,2.000,Draw,Draw,1,"3-Fold Repetition",94,914.81,1738.76,122.341,4,2
+4,CheckerBoard,MCTS_UCB1,2.000,Black,MCTS_UCB1,0,"Elimination / Block",56,1437.58,1557.75,81.190,1,6
+5,MCTS_UCB1,CheckerBoard,2.000,Draw,Draw,1,"3-Fold Repetition",171,495.27,1785.39,192.900,1,1
+6,CheckerBoard,MCTS_UCB1,2.000,Black,MCTS_UCB1,0,"Elimination / Block",48,1391.20,1132.50,58.121,0,6
+7,MCTS_UCB1,CheckerBoard,2.000,Black,CheckerBoard,0,"Elimination / Block",74,668.23,1121.29,64.863,0,3
+8,CheckerBoard,MCTS_UCB1,2.000,Black,MCTS_UCB1,0,"Elimination / Block",56,1436.40,1558.99,81.191,1,6
+9,MCTS_UCB1,CheckerBoard,2.000,Draw,Draw,1,"3-Fold Repetition",94,914.75,1738.76,122.534,4,2
+10,CheckerBoard,MCTS_UCB1,2.000,Black,MCTS_UCB1,0,"Elimination / Block",56,1433.57,1558.20,81.027,1,6
+11,MCTS_UCB1,CheckerBoard,2.000,Black,CheckerBoard,0,"Elimination / Block",158,540.46,1691.97,174.732,0,2
+12,CheckerBoard,MCTS_UCB1,2.000,Black,MCTS_UCB1,0,"Elimination / Block",56,1435.06,1558.43,81.148,1,6
+13,MCTS_UCB1,CheckerBoard,2.000,White,MCTS_UCB1,0,"Elimination / Block",61,1335.96,1313.78,78.424,6,1
+14,CheckerBoard,MCTS_UCB1,2.000,White,CheckerBoard,0,"Elimination / Block",89,1366.04,605.82,86.480,2,0
+15,MCTS_UCB1,CheckerBoard,2.000,White,MCTS_UCB1,0,"Elimination / Block",113,536.90,1599.72,118.313,1,0
+16,CheckerBoard,MCTS_UCB1,2.000,Draw,Draw,1,"3-Fold Repetition",180,1887.21,450.52,208.331,3,2
+17,MCTS_UCB1,CheckerBoard,2.000,White,MCTS_UCB1,0,"Elimination / Block",61,1335.21,1313.54,78.407,6,1
+18,CheckerBoard,MCTS_UCB1,2.000,Draw,Draw,1,"3-Fold Repetition",184,1889.73,440.60,212.480,3,2
+19,MCTS_UCB1,CheckerBoard,2.000,White,MCTS_UCB1,0,"Elimination / Block",113,537.19,1599.70,118.346,1,0
+20,CheckerBoard,MCTS_UCB1,2.000,White,CheckerBoard,0,"Elimination / Block",89,1366.03,605.93,86.404,2,0
+21,MCTS_UCB1,CheckerBoard,2.000,White,MCTS_UCB1,0,"Elimination / Block",113,536.99,1599.73,118.290,1,0
+22,CheckerBoard,MCTS_UCB1,2.000,White,CheckerBoard,0,"Elimination / Block",89,1366.22,605.75,86.397,2,0
+23,MCTS_UCB1,CheckerBoard,2.000,White,MCTS_UCB1,0,"Elimination / Block",141,601.50,1809.42,167.205,4,0
+24,CheckerBoard,MCTS_UCB1,2.000,White,CheckerBoard,0,"Elimination / Block",71,1542.58,825.39,82.149,4,0
+25,MCTS_UCB1,CheckerBoard,2.000,White,MCTS_UCB1,0,"Elimination / Block",53,1155.77,1251.11,61.496,5,1
+26,CheckerBoard,MCTS_UCB1,2.000,White,CheckerBoard,0,"Elimination / Block",89,1365.84,605.79,86.455,2,0
+27,MCTS_UCB1,CheckerBoard,2.000,White,MCTS_UCB1,0,"Elimination / Block",53,1156.68,1250.73,61.565,5,1
+28,CheckerBoard,MCTS_UCB1,2.000,White,CheckerBoard,0,"Elimination / Block",89,1366.36,605.81,86.383,2,0
+29,MCTS_UCB1,CheckerBoard,2.000,White,MCTS_UCB1,0,"Elimination / Block",141,601.47,1809.54,167.142,4,0
+30,CheckerBoard,MCTS_UCB1,2.000,White,CheckerBoard,0,"Elimination / Block",71,1542.54,825.23,82.164,4,0
+31,MCTS_UCB1,CheckerBoard,2.000,White,MCTS_UCB1,0,"Elimination / Block",103,864.51,1235.65,106.304,6,0
+32,CheckerBoard,MCTS_UCB1,2.000,White,CheckerBoard,0,"Elimination / Block",69,1096.38,850.13,65.537,1,0
+33,MCTS_UCB1,CheckerBoard,2.000,Black,CheckerBoard,0,"Elimination / Block",80,822.01,1234.50,80.551,0,4
+34,CheckerBoard,MCTS_UCB1,2.000,White,CheckerBoard,0,"Elimination / Block",69,1095.28,850.50,65.584,1,0
+35,MCTS_UCB1,CheckerBoard,2.000,White,MCTS_UCB1,0,"Elimination / Block",141,601.26,1808.40,167.018,4,0
+36,CheckerBoard,MCTS_UCB1,2.000,White,CheckerBoard,0,"Elimination / Block",71,1542.55,824.65,82.282,4,0
+37,MCTS_UCB1,CheckerBoard,2.000,White,MCTS_UCB1,0,"Elimination / Block",141,601.35,1807.83,166.965,4,0
+38,CheckerBoard,MCTS_UCB1,2.000,White,CheckerBoard,0,"Elimination / Block",89,1457.54,512.57,86.441,3,0
+39,MCTS_UCB1,CheckerBoard,2.000,Draw,Draw,1,"3-Fold Repetition",93,609.96,1688.49,104.288,3,4
+40,CheckerBoard,MCTS_UCB1,2.000,White,CheckerBoard,0,"Elimination / Block",71,1542.52,825.45,82.208,4,0
+41,MCTS_UCB1,CheckerBoard,2.000,White,MCTS_UCB1,0,"Elimination / Block",65,1439.51,1499.11,92.902,4,0
+42,CheckerBoard,MCTS_UCB1,2.000,White,CheckerBoard,0,"Elimination / Block",97,1372.53,937.92,110.187,3,0
+43,MCTS_UCB1,CheckerBoard,2.000,Draw,Draw,1,"3-Fold Repetition",207,370.84,1881.99,230.389,2,3
+44,CheckerBoard,MCTS_UCB1,2.000,White,CheckerBoard,0,"Elimination / Block",177,1682.10,1809.58,305.478,5,0
+45,MCTS_UCB1,CheckerBoard,2.000,Black,CheckerBoard,0,"Elimination / Block",80,821.83,1234.78,80.452,0,4
+46,CheckerBoard,MCTS_UCB1,2.000,Draw,Draw,1,"3-Fold Repetition",104,1685.98,1054.65,139.923,1,1
+47,MCTS_UCB1,CheckerBoard,2.000,Black,CheckerBoard,0,"Elimination / Block",70,825.30,998.23,62.079,0,4
+48,CheckerBoard,MCTS_UCB1,2.000,Draw,Draw,1,"3-Fold Repetition",74,1666.23,1780.80,124.144,5,5
+49,MCTS_UCB1,CheckerBoard,2.000,Black,CheckerBoard,0,"Elimination / Block",70,824.72,998.60,62.177,0,4
+50,CheckerBoard,MCTS_UCB1,2.000,Draw,Draw,1,"3-Fold Repetition",102,1719.63,561.41,114.124,3,2

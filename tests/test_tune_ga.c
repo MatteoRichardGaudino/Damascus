@@ -122,6 +122,8 @@ int main(void) {
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);
     zobrist_init();
+    wld_db_init();
+    opening_book_init(BOOK_BACKEND_KINGSROW_ODB, NULL);
 
     printf("==============================================================================\n");
     printf("  Damascus Unit Test Suite - Genetic Algorithm Tuning Subsystem\n");

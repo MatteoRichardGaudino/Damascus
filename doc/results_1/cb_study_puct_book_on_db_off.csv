@@ -1,0 +1,51 @@
+game_id,white_engine,black_engine,time_budget,winner_color,winner_engine,is_draw,reason,plies,white_avg_ms,black_avg_ms,duration_sec,white_pieces,black_pieces
+1,MCTS_PUCT,CheckerBoard,2.000,Draw,Draw,1,"3-Fold Repetition",145,1619.33,1804.71,244.760,3,5
+2,CheckerBoard,MCTS_PUCT,2.000,Draw,Draw,1,"Max Plies Limit (250)",250,1838.63,1850.59,457.590,1,2
+3,MCTS_PUCT,CheckerBoard,2.000,Draw,Draw,1,"Max Plies Limit (250)",250,1823.69,1871.08,458.274,2,1
+4,CheckerBoard,MCTS_PUCT,2.000,Black,MCTS_PUCT,0,"Elimination / Block",54,1388.51,1310.59,70.294,0,5
+5,MCTS_PUCT,CheckerBoard,2.000,White,MCTS_PUCT,0,"Elimination / Block",113,1605.86,1700.11,183.598,4,0
+6,CheckerBoard,MCTS_PUCT,2.000,Black,MCTS_PUCT,0,"Elimination / Block",54,1388.19,1310.43,70.258,0,5
+7,MCTS_PUCT,CheckerBoard,2.000,Draw,Draw,1,"3-Fold Repetition",105,1544.05,1686.35,166.645,1,1
+8,CheckerBoard,MCTS_PUCT,2.000,Draw,Draw,1,"Max Plies Limit (250)",250,1839.10,1845.13,457.122,1,1
+9,MCTS_PUCT,CheckerBoard,2.000,Black,CheckerBoard,0,"Elimination / Block",68,1597.24,1341.26,97.298,3,6
+10,CheckerBoard,MCTS_PUCT,2.000,Black,MCTS_PUCT,0,"Elimination / Block",86,1557.51,1506.73,128.792,1,4
+11,MCTS_PUCT,CheckerBoard,2.000,White,MCTS_PUCT,0,"Elimination / Block",73,1392.86,1432.50,100.657,2,1
+12,CheckerBoard,MCTS_PUCT,2.000,Black,MCTS_PUCT,0,"Elimination / Block",54,1388.59,1310.45,70.221,0,5
+13,MCTS_PUCT,CheckerBoard,2.000,White,MCTS_PUCT,0,"Elimination / Block",69,1382.89,1645.86,101.586,5,1
+14,CheckerBoard,MCTS_PUCT,2.000,White,CheckerBoard,0,"Elimination / Block",113,1543.45,1603.25,174.917,3,0
+15,MCTS_PUCT,CheckerBoard,2.000,White,MCTS_PUCT,0,"Elimination / Block",51,1359.64,1586.69,72.679,7,1
+16,CheckerBoard,MCTS_PUCT,2.000,Black,MCTS_PUCT,0,"Elimination / Block",96,1641.73,1575.45,151.226,0,3
+17,MCTS_PUCT,CheckerBoard,2.000,Draw,Draw,1,"3-Fold Repetition",113,1698.73,1745.07,191.154,3,5
+18,CheckerBoard,MCTS_PUCT,2.000,White,CheckerBoard,0,"Elimination / Block",125,1591.55,1547.36,193.113,3,0
+19,MCTS_PUCT,CheckerBoard,2.000,White,MCTS_PUCT,0,"Elimination / Block",87,1564.76,1727.28,139.865,3,0
+20,CheckerBoard,MCTS_PUCT,2.000,Draw,Draw,1,"3-Fold Repetition",194,1812.16,1678.38,335.149,1,1
+21,MCTS_PUCT,CheckerBoard,2.000,Draw,Draw,1,"3-Fold Repetition",129,1580.05,1809.18,215.154,3,3
+22,CheckerBoard,MCTS_PUCT,2.000,Black,MCTS_PUCT,0,"Elimination / Block",52,1439.76,1217.32,66.468,0,5
+23,MCTS_PUCT,CheckerBoard,2.000,Draw,Draw,1,"3-Fold Repetition",193,1670.66,1831.19,334.398,3,4
+24,CheckerBoard,MCTS_PUCT,2.000,White,CheckerBoard,0,"Elimination / Block",149,1667.53,1718.34,248.873,2,0
+25,MCTS_PUCT,CheckerBoard,2.000,Draw,Draw,1,"3-Fold Repetition",95,1747.17,1782.20,164.144,4,4
+26,CheckerBoard,MCTS_PUCT,2.000,Draw,Draw,1,"Max Plies Limit (250)",250,1870.60,1860.83,462.760,1,2
+27,MCTS_PUCT,CheckerBoard,2.000,Draw,Draw,1,"Max Plies Limit (250)",250,1826.72,1870.59,458.512,3,3
+28,CheckerBoard,MCTS_PUCT,2.000,Draw,Draw,1,"Max Plies Limit (250)",250,1854.51,1866.32,461.417,1,2
+29,MCTS_PUCT,CheckerBoard,2.000,White,MCTS_PUCT,0,"Elimination / Block",47,1045.53,1279.03,52.245,6,0
+30,CheckerBoard,MCTS_PUCT,2.000,White,CheckerBoard,0,"Elimination / Block",151,1662.52,1711.93,251.419,2,0
+31,MCTS_PUCT,CheckerBoard,2.000,Draw,Draw,1,"Max Plies Limit (250)",250,1795.62,1870.58,454.668,2,1
+32,CheckerBoard,MCTS_PUCT,2.000,Draw,Draw,1,"Max Plies Limit (250)",250,1870.62,1829.45,458.860,1,2
+33,MCTS_PUCT,CheckerBoard,2.000,Draw,Draw,1,"Max Plies Limit (250)",250,1762.49,1870.59,450.572,2,1
+34,CheckerBoard,MCTS_PUCT,2.000,Draw,Draw,1,"Max Plies Limit (250)",250,1870.64,1864.94,463.249,1,2
+35,MCTS_PUCT,CheckerBoard,2.000,Draw,Draw,1,"3-Fold Repetition",105,1609.67,1685.93,169.737,2,3
+36,CheckerBoard,MCTS_PUCT,2.000,Black,MCTS_PUCT,0,"Elimination / Block",136,1764.96,1638.06,228.025,0,3
+37,MCTS_PUCT,CheckerBoard,2.000,White,MCTS_PUCT,0,"Elimination / Block",59,1313.61,1428.36,78.127,2,0
+38,CheckerBoard,MCTS_PUCT,2.000,Black,MCTS_PUCT,0,"Elimination / Block",56,1577.72,1252.45,76.438,0,3
+39,MCTS_PUCT,CheckerBoard,2.000,White,MCTS_PUCT,0,"Elimination / Block",53,1156.23,1200.06,60.109,6,0
+40,CheckerBoard,MCTS_PUCT,2.000,Draw,Draw,1,"3-Fold Repetition",186,1803.97,1667.89,319.488,1,1
+41,MCTS_PUCT,CheckerBoard,2.000,Draw,Draw,1,"3-Fold Repetition",111,1688.60,1740.36,186.896,2,3
+42,CheckerBoard,MCTS_PUCT,2.000,Draw,Draw,1,"3-Fold Repetition",214,1810.94,1795.13,382.336,1,1
+43,MCTS_PUCT,CheckerBoard,2.000,White,MCTS_PUCT,0,"Elimination / Block",101,1487.33,1597.61,152.725,5,1
+44,CheckerBoard,MCTS_PUCT,2.000,White,CheckerBoard,0,"Elimination / Block",81,1349.38,1602.38,116.510,6,3
+45,MCTS_PUCT,CheckerBoard,2.000,Draw,Draw,1,"Max Plies Limit (250)",250,1849.88,1870.57,461.356,2,1
+46,CheckerBoard,MCTS_PUCT,2.000,Black,MCTS_PUCT,0,"Elimination / Block",104,1411.47,1547.20,150.953,1,1
+47,MCTS_PUCT,CheckerBoard,2.000,White,MCTS_PUCT,0,"Elimination / Block",53,1155.98,1200.04,60.134,6,0
+48,CheckerBoard,MCTS_PUCT,2.000,Draw,Draw,1,"Max Plies Limit (250)",250,1886.67,1880.64,467.166,1,2
+49,MCTS_PUCT,CheckerBoard,2.000,Draw,Draw,1,"3-Fold Repetition",117,1668.78,1718.91,194.796,3,4
+50,CheckerBoard,MCTS_PUCT,2.000,Black,MCTS_PUCT,0,"Elimination / Block",144,1830.62,1736.61,253.286,0,2

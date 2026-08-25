@@ -1,0 +1,21 @@
+game_id,white_engine,black_engine,time_budget,winner_color,winner_engine,is_draw,reason,plies,white_avg_ms,black_avg_ms,duration_sec,white_pieces,black_pieces
+1,MCTS_PUCT,MCTS_PUCT,0.200,Draw,Draw,1,"3-Fold Repetition",85,78.20,70.07,6.198,3,3
+2,MCTS_PUCT,MCTS_PUCT,0.200,White,MCTS_PUCT,0,"Elimination / Block",125,59.36,53.58,7.003,1,0
+3,MCTS_PUCT,MCTS_PUCT,0.200,White,MCTS_PUCT,0,"Elimination / Block",143,107.36,111.90,15.501,3,0
+4,MCTS_PUCT,MCTS_PUCT,0.200,Black,MCTS_PUCT,0,"Elimination / Block",146,79.82,79.88,11.576,0,2
+5,MCTS_PUCT,MCTS_PUCT,0.200,Black,MCTS_PUCT,0,"Elimination / Block",110,68.40,68.45,7.451,0,4
+6,MCTS_PUCT,MCTS_PUCT,0.200,Draw,Draw,1,"3-Fold Repetition",218,112.05,112.52,24.343,3,3
+7,MCTS_PUCT,MCTS_PUCT,0.200,White,MCTS_PUCT,0,"Elimination / Block",185,87.12,83.63,15.843,2,0
+8,MCTS_PUCT,MCTS_PUCT,0.200,White,MCTS_PUCT,0,"Elimination / Block",81,71.85,73.50,5.767,1,0
+9,MCTS_PUCT,MCTS_PUCT,0.200,White,MCTS_PUCT,0,"Elimination / Block",157,112.99,117.31,17.897,4,0
+10,MCTS_PUCT,MCTS_PUCT,0.200,Black,MCTS_PUCT,0,"Elimination / Block",118,144.48,137.32,16.391,0,3
+11,MCTS_PUCT,MCTS_PUCT,0.200,Draw,Draw,1,"3-Fold Repetition",89,88.29,91.02,7.854,3,3
+12,MCTS_PUCT,MCTS_PUCT,0.200,White,MCTS_PUCT,0,"Elimination / Block",153,126.90,128.48,19.336,4,0
+13,MCTS_PUCT,MCTS_PUCT,0.200,White,MCTS_PUCT,0,"Elimination / Block",121,50.96,52.34,6.250,4,0
+14,MCTS_PUCT,MCTS_PUCT,0.200,White,MCTS_PUCT,0,"Elimination / Block",201,57.41,56.37,11.388,3,0
+15,MCTS_PUCT,MCTS_PUCT,0.200,White,MCTS_PUCT,0,"Elimination / Block",107,38.78,51.13,4.819,2,0
+16,MCTS_PUCT,MCTS_PUCT,0.200,White,MCTS_PUCT,0,"Elimination / Block",97,85.65,86.89,8.345,2,0
+17,MCTS_PUCT,MCTS_PUCT,0.200,Black,MCTS_PUCT,0,"Elimination / Block",56,90.72,75.92,4.539,0,3
+18,MCTS_PUCT,MCTS_PUCT,0.200,Black,MCTS_PUCT,0,"Elimination / Block",52,122.71,98.72,5.556,0,4
+19,MCTS_PUCT,MCTS_PUCT,0.200,White,MCTS_PUCT,0,"Elimination / Block",195,38.24,40.94,7.717,1,0
+20,MCTS_PUCT,MCTS_PUCT,0.200,White,MCTS_PUCT,0,"Elimination / Block",103,143.77,154.59,15.070,6,0
