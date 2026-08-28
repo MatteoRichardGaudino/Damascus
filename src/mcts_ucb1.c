@@ -8,7 +8,6 @@ ______________________________________________________________________________*/
 #include "mcts_heuristic.h"
 #include "opening_book.h"
 #include "wld_db.h"
-#include "wld_solver.h"
 #include "zobrist.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -114,10 +113,10 @@ void engine_mcts_ucb1_init(void **state) {
     st->exploration_alpha = MCTS_DEFAULT_EXPLORATION;
     st->max_rollout_depth = MCTS_MAX_ROLLOUT_DEPTH;
     st->rollout_epsilon = MCTS_DEFAULT_ROLLOUT_EPSILON;
-    st->use_db = true;
+    st->use_db = false;
     st->use_book = true;
-    st->book_mode = BOOK_MODE_BEST;
-    st->book_temperature = 1.0f;
+    st->book_mode = BOOK_MODE_GOOD;
+    st->book_temperature = 2.2806f;
     st->debug_log = false;
     st->root_idx = UINT32_MAX;
     st->rng_state = (uint32_t)time(NULL) ^ 0x9E3779B9U;
@@ -220,7 +219,7 @@ static bool boards_equal(const Board *a, const Board *b) {
            (a->black_kings == b->black_kings);
 }
 
-// Rollout evaluation cutoff with WLD tablebase integration and depth discounting
+// Rollout evaluation cutoff with heuristic material evaluation and depth discounting
 static float evaluate_rollout_terminal(const GameState *sim_state, Player ai_player, int total_depth) {
     if (sim_state->is_game_over) {
         return mcts_compute_depth_discounted_reward(
@@ -229,20 +228,6 @@ static float evaluate_rollout_terminal(const GameState *sim_state, Player ai_pla
             sim_state->is_draw,
             total_depth
         );
-    }
-
-    // Exact Endgame Tablebase Probe (<= 5/8 pieces)
-    if (wld_db_is_endgame(&sim_state->board)) {
-        WLDValue wld = wld_db_probe(sim_state);
-        if (wld == WLD_WIN_WHITE) {
-            bool ai_wins = (ai_player == PLAYER_WHITE);
-            return mcts_compute_depth_discounted_reward(ai_wins, !ai_wins, false, total_depth);
-        } else if (wld == WLD_WIN_BLACK) {
-            bool ai_wins = (ai_player == PLAYER_BLACK);
-            return mcts_compute_depth_discounted_reward(ai_wins, !ai_wins, false, total_depth);
-        } else if (wld == WLD_DRAW) {
-            return 0.5f;
-        }
     }
 
     // Heuristic material evaluation at cutoff
@@ -263,30 +248,43 @@ static float evaluate_rollout_terminal(const GameState *sim_state, Player ai_pla
 }
 
 // Initialize node game-theoretic proof status from terminal state or tablebase probe
-static inline void mcts_init_node_proof(MCTSNode *node, const GameState *state, bool use_db) {
+static inline void mcts_init_node_proof(MCTSNode *node, const GameState *parent_state, const GameState *child_state, bool use_db) {
     node->proof_status = MCTS_PROOF_UNKNOWN;
     node->proof_depth = 0;
 
-    if (state->is_game_over) {
-        if (state->is_draw) {
+    if (child_state->is_game_over) {
+        node->visits = 1;
+        if (child_state->is_draw) {
+            node->wins = 0.5f;
             node->proof_status = MCTS_PROOF_DRAW;
             node->proof_depth = 0;
+        } else if (child_state->winner == parent_state->current_player) {
+            node->wins = 1.0f;
+            node->proof_status = MCTS_PROOF_LOSS; // Proven loss for opponent who is next to move at child_state
+            node->proof_depth = 0;
         } else {
-            node->proof_status = (state->winner == state->current_player) ? MCTS_PROOF_WIN : MCTS_PROOF_LOSS;
+            node->wins = 0.0f;
+            node->proof_status = MCTS_PROOF_WIN; // Proven win for opponent who is next to move at child_state
             node->proof_depth = 0;
         }
         return;
     }
 
-    if (use_db && wld_db_is_endgame(&state->board)) {
-        WLDValue wld = wld_db_probe(state);
+    if (use_db && (wld_is_endgame_state(child_state) || wld_db_is_endgame(&child_state->board))) {
+        WLDValue wld = wld_db_probe(child_state);
         if (wld == WLD_WIN_WHITE) {
-            node->proof_status = (state->current_player == PLAYER_WHITE) ? MCTS_PROOF_WIN : MCTS_PROOF_LOSS;
+            node->visits = 1;
+            node->wins = (parent_state->current_player == PLAYER_WHITE) ? 1.0f : 0.0f;
+            node->proof_status = (child_state->current_player == PLAYER_WHITE) ? MCTS_PROOF_WIN : MCTS_PROOF_LOSS;
             node->proof_depth = 1;
         } else if (wld == WLD_WIN_BLACK) {
-            node->proof_status = (state->current_player == PLAYER_BLACK) ? MCTS_PROOF_WIN : MCTS_PROOF_LOSS;
+            node->visits = 1;
+            node->wins = (parent_state->current_player == PLAYER_BLACK) ? 1.0f : 0.0f;
+            node->proof_status = (child_state->current_player == PLAYER_BLACK) ? MCTS_PROOF_WIN : MCTS_PROOF_LOSS;
             node->proof_depth = 1;
         } else if (wld == WLD_DRAW) {
+            node->visits = 1;
+            node->wins = 0.5f;
             node->proof_status = MCTS_PROOF_DRAW;
             node->proof_depth = 1;
         }
@@ -359,9 +357,52 @@ static inline int sq_manhattan_dist(int sq1, int sq2) {
     return abs(r1 - r2) + abs(c1 - c2);
 }
 
-// Direct Endgame Database Move Selector via WLD Shortest-Win Mini-Solver
-static Move mcts_select_database_move(const GameState *game, bool debug_log) {
-    return wld_solver_select_move(game, WLD_SOLVER_DEFAULT_DEPTH, debug_log);
+
+// Expand node in UCB1 tree and assign proof status from terminal state or tablebase probe
+static bool ucb1_expand_node(uint32_t node_idx, const GameState *state, bool use_db, TranspositionTable *tt, uint16_t epoch, uint16_t depth) {
+    if (node_idx >= s_pool_tail) return false;
+    if (s_node_pool[node_idx].first_child_idx != UINT32_MAX && s_node_pool[node_idx].first_child_idx < s_pool_tail) return true;
+
+    MoveList ml = *game_get_valid_moves(state);
+    s_node_pool[node_idx].num_children = ml.count;
+    s_node_pool[node_idx].unexpanded_idx = 0;
+
+    if (ml.count == 0) {
+        return false;
+    }
+
+    if (s_pool_tail + ml.count > MCTS_MAX_NODES) {
+        return false;
+    }
+
+    uint32_t first_child = s_pool_tail;
+    s_pool_tail += ml.count;
+    s_node_pool[node_idx].first_child_idx = first_child;
+
+    for (uint8_t i = 0; i < ml.count; i++) {
+        uint32_t child_idx = first_child + i;
+        s_node_pool[child_idx].move = ml.moves[i];
+        s_node_pool[child_idx].visits = 0;
+        s_node_pool[child_idx].wins = 0.0f;
+        s_node_pool[child_idx].parent_idx = node_idx;
+        s_node_pool[child_idx].first_child_idx = UINT32_MAX;
+        s_node_pool[child_idx].num_children = 0;
+        s_node_pool[child_idx].unexpanded_idx = 0;
+        s_node_pool[child_idx].proof_status = MCTS_PROOF_UNKNOWN;
+        s_node_pool[child_idx].proof_depth = 0;
+
+        GameState child_state = *state;
+        game_execute_move(&child_state, ml.moves[i]);
+        s_node_pool[child_idx].hash = child_state.hash;
+        mcts_init_node_proof(&s_node_pool[child_idx], state, &child_state, use_db);
+
+        if (tt) {
+            tt_store(tt, child_state.hash, child_idx, depth, epoch);
+        }
+    }
+    mcts_update_proof_status(node_idx);
+
+    return true;
 }
 
 static inline bool node_is_fully_expanded(uint32_t idx) {
@@ -399,15 +440,6 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
         st->root_idx = UINT32_MAX;
         st->prev_ai_move = MOVE_NONE;
         return root_valid_moves.moves[0];
-    }
-
-    // Direct Database Mode: If enabled and board is within tablebase endgame range, use shortest-win solver!
-    if (st->use_db && wld_solver_is_applicable(game)) {
-        Move db_move = mcts_select_database_move(game, st->debug_log);
-        st->has_prev_state = false;
-        st->root_idx = UINT32_MAX;
-        st->prev_ai_move = MOVE_NONE;
-        return db_move;
     }
 
     // Direct Opening Book Mode: If enabled and in instant mode (BEST, GOOD, ALL), select directly (0 ms)!
@@ -482,35 +514,17 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
 
     tt_store(&st->tt, game->hash, st->root_idx, 0, st->search_epoch);
 
-    // Ensure root children are generated
+    // Ensure root children are generated with tablebase proof status
     if (s_node_pool[st->root_idx].first_child_idx == UINT32_MAX) {
-        s_node_pool[st->root_idx].num_children = root_valid_moves.count;
-        s_node_pool[st->root_idx].unexpanded_idx = 0;
-        if (root_valid_moves.count > 0 && s_pool_tail + root_valid_moves.count <= MCTS_MAX_NODES) {
-            uint32_t start_c = s_pool_tail;
-            s_pool_tail += root_valid_moves.count;
-            s_node_pool[st->root_idx].first_child_idx = start_c;
-            for (uint8_t i = 0; i < root_valid_moves.count; i++) {
-                GameState child_st = *game;
-                game_execute_move(&child_st, root_valid_moves.moves[i]);
-                s_node_pool[start_c + i].hash = child_st.hash;
-                s_node_pool[start_c + i].visits = 0;
-                s_node_pool[start_c + i].wins = 0.0f;
-                s_node_pool[start_c + i].parent_idx = st->root_idx;
-                s_node_pool[start_c + i].first_child_idx = UINT32_MAX;
-                s_node_pool[start_c + i].move = root_valid_moves.moves[i];
-                s_node_pool[start_c + i].num_children = 0;
-                s_node_pool[start_c + i].unexpanded_idx = 0;
-                mcts_init_node_proof(&s_node_pool[start_c + i], &child_st, st->use_db);
-                tt_store(&st->tt, child_st.hash, start_c + i, 1, st->search_epoch);
-            }
-
+        if (ucb1_expand_node(st->root_idx, game, st->use_db, &st->tt, st->search_epoch, 1)) {
             // Root Tree Warm-Starting from Opening Book Metadata
             if (st->use_book) {
                 BookMoveList root_book_moves;
                 if (opening_book_probe(game, &root_book_moves) && root_book_moves.count > 0) {
-                    for (uint8_t i = 0; i < root_valid_moves.count; i++) {
-                        uint32_t c_idx = start_c + i;
+                    uint32_t fc = s_node_pool[st->root_idx].first_child_idx;
+                    uint8_t nc = s_node_pool[st->root_idx].num_children;
+                    for (uint8_t i = 0; i < nc; i++) {
+                        uint32_t c_idx = fc + i;
                         Move cm = s_node_pool[c_idx].move;
                         for (int b = 0; b < root_book_moves.count; b++) {
                             if (move_equals(cm, root_book_moves.entries[b].move)) {
@@ -531,8 +545,6 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
                     }
                 }
             }
-
-            mcts_update_proof_status(st->root_idx);
         }
     }
 
@@ -545,8 +557,13 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
     const double budget = st->time_budget;
 
     while (1) {
-        // Non-blocking time and stop check strictly every 512 iterations
-        if ((iterations & 511) == 0 && iterations > 0) {
+        // If root node is already solved, terminate early
+        if (s_node_pool[st->root_idx].proof_status != MCTS_PROOF_UNKNOWN) {
+            break;
+        }
+
+        // Non-blocking time and stop check strictly every 64 iterations
+        if ((iterations & 63) == 0 && iterations > 0) {
             if (engine_is_stop_requested()) {
                 break;
             }
@@ -566,6 +583,10 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
         path_stack[path_len++] = curr_idx;
 
         while (node_is_fully_expanded(curr_idx) && !curr_state.is_game_over && path_len < MAX_TREE_DEPTH - 2) {
+            if (s_node_pool[curr_idx].proof_status != MCTS_PROOF_UNKNOWN) {
+                break;
+            }
+
             uint32_t fc = s_node_pool[curr_idx].first_child_idx;
             uint8_t nc = s_node_pool[curr_idx].num_children;
             if (nc == 0) break;
@@ -591,9 +612,14 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
                     val = -10000.0f + (float)s_node_pool[c_idx].proof_depth;
                 } else {
                     uint32_t c_n = s_node_pool[c_idx].visits;
-                    float q = (c_n > 0) ? (s_node_pool[c_idx].wins / (float)c_n) : 0.0f;
-                    float u = alpha * sqrtf((2.0f * ln_parent) / (float)(c_n > 0 ? c_n : 1));
-                    val = q + u;
+                    if (c_n == 0) {
+                        // Unvisited child must be explored immediately
+                        val = 1000.0f + (float)(nc - i);
+                    } else {
+                        float q = s_node_pool[c_idx].wins / (float)c_n;
+                        float u = alpha * sqrtf((2.0f * ln_parent) / (float)c_n);
+                        val = q + u;
+                    }
                 }
 
                 if (val > best_ucb1) {
@@ -612,33 +638,9 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
 
         // 2. EXPANSION
         uint32_t sim_node = curr_idx;
-        if (!curr_state.is_game_over && path_len < MAX_TREE_DEPTH - 2) {
+        if (!curr_state.is_game_over && s_node_pool[curr_idx].proof_status == MCTS_PROOF_UNKNOWN && path_len < MAX_TREE_DEPTH - 2) {
             if (s_node_pool[curr_idx].first_child_idx == UINT32_MAX) {
-                MoveList ml = *game_get_valid_moves(&curr_state);
-                s_node_pool[curr_idx].num_children = ml.count;
-                s_node_pool[curr_idx].unexpanded_idx = 0;
-
-                if (ml.count > 0 && s_pool_tail + ml.count <= MCTS_MAX_NODES) {
-                    uint32_t start_c = s_pool_tail;
-                    s_pool_tail += ml.count;
-                    s_node_pool[curr_idx].first_child_idx = start_c;
-
-                    for (uint8_t i = 0; i < ml.count; i++) {
-                        GameState child_st = curr_state;
-                        game_execute_move(&child_st, ml.moves[i]);
-                        s_node_pool[start_c + i].hash = child_st.hash;
-                        s_node_pool[start_c + i].visits = 0;
-                        s_node_pool[start_c + i].wins = 0.0f;
-                        s_node_pool[start_c + i].parent_idx = curr_idx;
-                        s_node_pool[start_c + i].first_child_idx = UINT32_MAX;
-                        s_node_pool[start_c + i].move = ml.moves[i];
-                        s_node_pool[start_c + i].num_children = 0;
-                        s_node_pool[start_c + i].unexpanded_idx = 0;
-                        mcts_init_node_proof(&s_node_pool[start_c + i], &child_st, st->use_db);
-                        tt_store(&st->tt, child_st.hash, start_c + i, (uint16_t)path_len, st->search_epoch);
-                    }
-                    mcts_update_proof_status(curr_idx);
-                }
+                ucb1_expand_node(curr_idx, &curr_state, st->use_db, &st->tt, st->search_epoch, (uint16_t)path_len);
             }
 
             if (s_node_pool[curr_idx].first_child_idx != UINT32_MAX &&
@@ -655,29 +657,38 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
         // 3. SIMULATION (ROLLOUT - BIASED HEURISTIC POLICY)
         GameState rollout_state = curr_state;
         int rollout_depth = 0;
-        int max_depth = st->max_rollout_depth;
-        float eps = st->rollout_epsilon;
-        while (!rollout_state.is_game_over && rollout_depth < max_depth) {
-            if (st->use_db && wld_db_is_endgame(&rollout_state.board)) {
-                WLDValue wld = wld_db_probe(&rollout_state);
-                if (wld != WLD_UNKNOWN) {
+        if (s_node_pool[sim_node].proof_status == MCTS_PROOF_UNKNOWN && !rollout_state.is_game_over) {
+            int max_depth = st->max_rollout_depth;
+            float eps = st->rollout_epsilon;
+            while (!rollout_state.is_game_over && rollout_depth < max_depth) {
+                MoveList ml = *game_get_valid_moves(&rollout_state);
+                if (ml.count == 0) {
+                    rollout_state.is_game_over = true;
+                    rollout_state.winner = (rollout_state.current_player == PLAYER_WHITE) ? PLAYER_BLACK : PLAYER_WHITE;
                     break;
                 }
+                Move rm = mcts_select_biased_rollout_move(&rollout_state, &ml, eps, &st->rng_state);
+                game_execute_move(&rollout_state, rm);
+                rollout_depth++;
             }
-
-            MoveList ml = *game_get_valid_moves(&rollout_state);
-            if (ml.count == 0) {
-                rollout_state.is_game_over = true;
-                rollout_state.winner = (rollout_state.current_player == PLAYER_WHITE) ? PLAYER_BLACK : PLAYER_WHITE;
-                break;
-            }
-            Move rm = mcts_select_biased_rollout_move(&rollout_state, &ml, eps, &st->rng_state);
-            game_execute_move(&rollout_state, rm);
-            rollout_depth++;
         }
 
-        int total_depth = (path_len > 0 ? (path_len - 1) : 0) + rollout_depth;
-        float ai_reward = evaluate_rollout_terminal(&rollout_state, ai_player, total_depth);
+        // Calculate Reward: Bypass heuristic completely if the node is mathematically solved!
+        float ai_reward;
+        if (s_node_pool[sim_node].proof_status != MCTS_PROOF_UNKNOWN) {
+            if (s_node_pool[sim_node].proof_status == MCTS_PROOF_DRAW) {
+                ai_reward = 0.5f;
+            } else if (s_node_pool[sim_node].proof_status == MCTS_PROOF_WIN) {
+                // The player to move at sim_node can force a win
+                ai_reward = (rollout_state.current_player == ai_player) ? 1.0f : 0.0f;
+            } else { // MCTS_PROOF_LOSS
+                // The player to move at sim_node is forced to lose
+                ai_reward = (rollout_state.current_player == ai_player) ? 0.0f : 1.0f;
+            }
+        } else {
+            int total_depth = (path_len > 0 ? (path_len - 1) : 0) + rollout_depth;
+            ai_reward = evaluate_rollout_terminal(&rollout_state, ai_player, total_depth);
+        }
 
         // 4. BACKPROPAGATION (Values & Proof Updates)
         for (int p = path_len - 1; p >= 0; p--) {

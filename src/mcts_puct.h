@@ -9,11 +9,11 @@
 
 #define PUCT_MAX_NODES              2000000
 #define PUCT_SAFETY_THRESHOLD_NODES 1600000
-#define PUCT_DEFAULT_C_PUCT         1.5f
-#define PUCT_DEFAULT_TEMPERATURE    1.0f
+#define PUCT_DEFAULT_C_PUCT         3.1821f
+#define PUCT_DEFAULT_TEMPERATURE    1.3406f
 #define PUCT_DEFAULT_TIME_BUDGET    1.0
 #define PUCT_MAX_ROLLOUT_DEPTH      70
-#define PUCT_DEFAULT_ROLLOUT_EPSILON 0.15f
+#define PUCT_DEFAULT_ROLLOUT_EPSILON 0.2553f
 
 // Compact Node Structure with prior probability P(s, a) and 64-bit Zobrist key
 typedef struct {

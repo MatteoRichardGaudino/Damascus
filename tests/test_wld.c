@@ -55,10 +55,6 @@ static void test_status_reporting(void) {
     ASSERT_TEST(st_none.available == true, "Status NONE: available");
     ASSERT_TEST(st_none.max_pieces == 0, "Status NONE: max_pieces == 0");
 
-    WLDStatus st_native = wld_get_status(WLD_BACKEND_REDUCED_NATIVE);
-    ASSERT_TEST(st_native.available == true, "Status NATIVE: available");
-    ASSERT_TEST(st_native.max_pieces == 4, "Status NATIVE: max_pieces == 4");
-
     WLDStatus st_official = wld_get_status(WLD_BACKEND_OFFICIAL_8PIECE);
     if (wld_egdb_is_supported()) {
         ASSERT_TEST(st_official.available == true, "Status OFFICIAL: available on Windows");
@@ -120,41 +116,12 @@ static void test_official_backend_probing(void) {
     ASSERT_TEST(wld_is_endgame_state(&g_9p) == false, "9-piece position not in endgame state");
 }
 
-static void test_reduced_native_backend(void) {
-    printf("\n=== Test 4: Reduced Native Backend Probing ===\n");
-    bool init_ok = wld_init_backend(WLD_BACKEND_REDUCED_NATIVE);
-    ASSERT_TEST(init_ok == true, "Reduced native backend initialization succeeds");
-    ASSERT_TEST(wld_get_active_backend() == WLD_BACKEND_REDUCED_NATIVE, "Active backend is WLD_BACKEND_REDUCED_NATIVE");
-
-    // 1v1 position on non-aligned diagonals (a1 vs a8 -> sq 0 vs sq 28 is DRAW)
-    GameState g_1v1;
-    memset(&g_1v1, 0, sizeof(g_1v1));
-    g_1v1.board.white_kings = (1U << 0);
-    g_1v1.board.black_kings = (1U << 28);
-    g_1v1.current_player = PLAYER_WHITE;
-    g_1v1.hash = zobrist_compute_hash(&g_1v1.board, g_1v1.current_player);
-
-    WLDValue val_1v1 = wld_probe_state(&g_1v1);
-    ASSERT_TEST(val_1v1 == WLD_DRAW, "1 King vs 1 King on non-aligned corners evaluates to WLD_DRAW");
-
-    // 2v1 position
-    GameState g_2v1;
-    memset(&g_2v1, 0, sizeof(g_2v1));
-    g_2v1.board.white_kings = (1U << 0) | (1U << 1);
-    g_2v1.board.black_kings = (1U << 31);
-    g_2v1.current_player = PLAYER_WHITE;
-    g_2v1.hash = zobrist_compute_hash(&g_2v1.board, g_2v1.current_player);
-
-    WLDValue val_2v1 = wld_probe_state(&g_2v1);
-    ASSERT_TEST(val_2v1 == WLD_WIN_WHITE, "Native 2 Kings vs 1 King evaluates to WLD_WIN_WHITE");
-}
-
 static void test_probe_benchmark(void) {
-    printf("\n=== Test 5: Probe Throughput Benchmark ===\n");
+    printf("\n=== Test 4: Probe Throughput Benchmark ===\n");
     if (wld_egdb_is_supported()) {
         wld_init_backend(WLD_BACKEND_OFFICIAL_8PIECE);
     } else {
-        wld_init_backend(WLD_BACKEND_REDUCED_NATIVE);
+        wld_init_backend(WLD_BACKEND_NONE);
     }
 
     GameState test_states[10];
@@ -183,11 +150,11 @@ static void test_probe_benchmark(void) {
 }
 
 static void test_wld_solver_tactics(void) {
-    printf("\n=== Test 6: WLD Alpha-Beta Shortest-Win Mini-Solver ===\n");
+    printf("\n=== Test 5: WLD Alpha-Beta Shortest-Win Mini-Solver ===\n");
     if (wld_egdb_is_supported()) {
         wld_init_backend(WLD_BACKEND_OFFICIAL_8PIECE);
     } else {
-        wld_init_backend(WLD_BACKEND_REDUCED_NATIVE);
+        wld_init_backend(WLD_BACKEND_NONE);
     }
 
     // 1. Applicability Check
@@ -334,7 +301,6 @@ static void test_mcts_value_shaping_and_proofs(void) {
     engine_mcts_ucb1_init(&ucb1_5p);
     engine_mcts_ucb1_set_time_budget(ucb1_5p, 0.05);
     engine_mcts_ucb1_set_use_db(ucb1_5p, true);
-
     Move ucb1_5p_move = engine_mcts_ucb1_get_move(ucb1_5p, &g_5p);
     ASSERT_TEST(!move_is_none(ucb1_5p_move), "MCTS UCB1 successfully evaluates 5-piece transition position");
     engine_mcts_ucb1_cleanup(ucb1_5p);
@@ -350,20 +316,17 @@ static void test_mcts_value_shaping_and_proofs(void) {
 }
 
 static void test_phase4_ui_cli_configuration(void) {
-    printf("\n=== Test 8: Phase 4 UI/CLI Configuration & Live Detection ===\n");
+    printf("\n=== Test 7: UI/CLI Configuration & Live Detection ===\n");
 
     // 1. WLD Backend String Parser Verification
     ASSERT_TEST(wld_backend_parse("official") == WLD_BACKEND_OFFICIAL_8PIECE, "Parser 'official' -> OFFICIAL_8PIECE");
     ASSERT_TEST(wld_backend_parse("8piece") == WLD_BACKEND_OFFICIAL_8PIECE, "Parser '8piece' -> OFFICIAL_8PIECE");
-    ASSERT_TEST(wld_backend_parse("reduced") == WLD_BACKEND_REDUCED_NATIVE, "Parser 'reduced' -> REDUCED_NATIVE");
-    ASSERT_TEST(wld_backend_parse("native") == WLD_BACKEND_REDUCED_NATIVE, "Parser 'native' -> REDUCED_NATIVE");
     ASSERT_TEST(wld_backend_parse("none") == WLD_BACKEND_NONE, "Parser 'none' -> WLD_BACKEND_NONE");
     ASSERT_TEST(wld_backend_parse("disabled") == WLD_BACKEND_NONE, "Parser 'disabled' -> WLD_BACKEND_NONE");
     ASSERT_TEST(wld_backend_parse("random_junk") == WLD_BACKEND_NONE, "Parser unknown string defaults to WLD_BACKEND_NONE");
 
     // 2. Name formatting and CLI tokens
     ASSERT_TEST(strcmp(wld_backend_get_cli_name(WLD_BACKEND_OFFICIAL_8PIECE), "official") == 0, "CLI name official");
-    ASSERT_TEST(strcmp(wld_backend_get_cli_name(WLD_BACKEND_REDUCED_NATIVE), "reduced") == 0, "CLI name reduced");
     ASSERT_TEST(strcmp(wld_backend_get_cli_name(WLD_BACKEND_NONE), "none") == 0, "CLI name none");
     ASSERT_TEST(strstr(wld_backend_get_name(WLD_BACKEND_OFFICIAL_8PIECE), "8 PEZZI") != NULL, "UI Label contains 8 PEZZI");
 
@@ -380,13 +343,11 @@ static void test_phase4_ui_cli_configuration(void) {
     wld_set_custom_path("");
     ASSERT_TEST(strcmp(wld_get_custom_path(), "") == 0, "Custom path reset to empty default");
 
-    // 4. GUI 3-Way Cycle Simulation
+    // 4. GUI Binary Toggle Simulation
     WLDBackendType b = WLD_BACKEND_OFFICIAL_8PIECE;
-    b = (b == WLD_BACKEND_OFFICIAL_8PIECE) ? WLD_BACKEND_REDUCED_NATIVE : (b == WLD_BACKEND_REDUCED_NATIVE ? WLD_BACKEND_NONE : WLD_BACKEND_OFFICIAL_8PIECE);
-    ASSERT_TEST(b == WLD_BACKEND_REDUCED_NATIVE, "GUI Cycle: OFFICIAL -> REDUCED");
-    b = (b == WLD_BACKEND_OFFICIAL_8PIECE) ? WLD_BACKEND_REDUCED_NATIVE : (b == WLD_BACKEND_REDUCED_NATIVE ? WLD_BACKEND_NONE : WLD_BACKEND_OFFICIAL_8PIECE);
-    ASSERT_TEST(b == WLD_BACKEND_NONE, "GUI Cycle: REDUCED -> NONE");
-    b = (b == WLD_BACKEND_OFFICIAL_8PIECE) ? WLD_BACKEND_REDUCED_NATIVE : (b == WLD_BACKEND_REDUCED_NATIVE ? WLD_BACKEND_NONE : WLD_BACKEND_OFFICIAL_8PIECE);
+    b = (b == WLD_BACKEND_OFFICIAL_8PIECE) ? WLD_BACKEND_NONE : WLD_BACKEND_OFFICIAL_8PIECE;
+    ASSERT_TEST(b == WLD_BACKEND_NONE, "GUI Cycle: OFFICIAL -> NONE");
+    b = (b == WLD_BACKEND_OFFICIAL_8PIECE) ? WLD_BACKEND_NONE : WLD_BACKEND_OFFICIAL_8PIECE;
     ASSERT_TEST(b == WLD_BACKEND_OFFICIAL_8PIECE, "GUI Cycle: NONE -> OFFICIAL");
 }
 
@@ -403,7 +364,6 @@ int main(void) {
     test_slice_scanner();
     test_status_reporting();
     test_official_backend_probing();
-    test_reduced_native_backend();
     test_probe_benchmark();
     test_wld_solver_tactics();
     test_mcts_value_shaping_and_proofs();

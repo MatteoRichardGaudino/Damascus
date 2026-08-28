@@ -20,9 +20,9 @@ typedef enum WLDValue WLDValue;
 
 // Ed Gilbert's EGDB driver position representation (32-bit bitboards)
 typedef struct {
-    uint32_t white;
-    uint32_t black;
-    uint32_t king;
+    uint64_t black;
+    uint64_t white;
+    uint64_t king;
 } EGDB_POSITION;
 
 typedef struct EGDB_DRIVER EGDB_DRIVER;

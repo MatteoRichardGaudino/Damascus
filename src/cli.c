@@ -775,12 +775,16 @@ static GameRecord play_single_game(int game_index, EngineType white_type, Engine
     engine_apply_config(&white_eng, white_type, &white_cfg);
     engine_apply_config(&black_eng, black_type, &black_cfg);
 
-    // Opening randomization plies
+    // Opening randomization plies with unique deterministic seed per game
+    uint32_t op_rng = (uint32_t)(game_index * 10007 + (int)white_type * 101 + (int)black_type * 17) ^ 0x9e3779b9U;
     int opening_plies = cfg->opening_plies;
     for (int p = 0; p < opening_plies && !game.is_game_over; p++) {
         const MoveList *legal = game_get_valid_moves(&game);
         if (!legal || legal->count == 0) break;
-        int r_idx = rand() % legal->count;
+        op_rng ^= op_rng << 13;
+        op_rng ^= op_rng >> 17;
+        op_rng ^= op_rng << 5;
+        int r_idx = (int)(op_rng % legal->count);
         game_execute_move(&game, legal->moves[r_idx]);
         record.plies++;
     }
@@ -872,6 +876,30 @@ static GameRecord play_single_game(int game_index, EngineType white_type, Engine
     return record;
 }
 
+static void write_game_record_csv_row(FILE *f, const GameRecord *r, double time_budget) {
+    if (!f || !r) return;
+    double w_avg_ms = (r->white_move_count > 0) ? (r->white_total_time / r->white_move_count) * 1000.0 : 0.0;
+    double b_avg_ms = (r->black_move_count > 0) ? (r->black_total_time / r->black_move_count) * 1000.0 : 0.0;
+    const char *win_color = r->is_draw ? "Draw" : (r->winner == PLAYER_WHITE ? "White" : "Black");
+    const char *win_eng = r->is_draw ? "Draw" : (r->winner == PLAYER_WHITE ? engine_get_type_name(r->white_engine) : engine_get_type_name(r->black_engine));
+
+    fprintf(f, "%d,%s,%s,%.3f,%s,%s,%d,\"%s\",%d,%.2f,%.2f,%.3f,%d,%d\n",
+            r->game_index,
+            engine_get_type_name(r->white_engine),
+            engine_get_type_name(r->black_engine),
+            time_budget,
+            win_color,
+            win_eng,
+            r->is_draw ? 1 : 0,
+            r->reason,
+            r->plies,
+            w_avg_ms,
+            b_avg_ms,
+            r->total_duration,
+            r->white_pieces_remaining,
+            r->black_pieces_remaining);
+}
+
 static void export_match_csv(const char *csv_path, const GameRecord *records, int count, double time_budget) {
     if (!csv_path || !*csv_path) return;
     ensure_parent_dir_exists(csv_path);
@@ -884,30 +912,94 @@ static void export_match_csv(const char *csv_path, const GameRecord *records, in
 
     fprintf(f, "game_id,white_engine,black_engine,time_budget,winner_color,winner_engine,is_draw,reason,plies,white_avg_ms,black_avg_ms,duration_sec,white_pieces,black_pieces\n");
     for (int i = 0; i < count; i++) {
-        const GameRecord *r = &records[i];
-        double w_avg_ms = (r->white_move_count > 0) ? (r->white_total_time / r->white_move_count) * 1000.0 : 0.0;
-        double b_avg_ms = (r->black_move_count > 0) ? (r->black_total_time / r->black_move_count) * 1000.0 : 0.0;
-        const char *win_color = r->is_draw ? "Draw" : (r->winner == PLAYER_WHITE ? "White" : "Black");
-        const char *win_eng = r->is_draw ? "Draw" : (r->winner == PLAYER_WHITE ? engine_get_type_name(r->white_engine) : engine_get_type_name(r->black_engine));
-
-        fprintf(f, "%d,%s,%s,%.3f,%s,%s,%d,\"%s\",%d,%.2f,%.2f,%.3f,%d,%d\n",
-                r->game_index,
-                engine_get_type_name(r->white_engine),
-                engine_get_type_name(r->black_engine),
-                time_budget,
-                win_color,
-                win_eng,
-                r->is_draw ? 1 : 0,
-                r->reason,
-                r->plies,
-                w_avg_ms,
-                b_avg_ms,
-                r->total_duration,
-                r->white_pieces_remaining,
-                r->black_pieces_remaining);
+        write_game_record_csv_row(f, &records[i], time_budget);
     }
     fclose(f);
     printf("Match results successfully exported to CSV: %s\n", csv_path);
+}
+
+static int load_existing_csv_records(const char *csv_path, GameRecord *records, bool *completed_flags, int total_games) {
+    if (!csv_path || !*csv_path || !records || !completed_flags) return 0;
+    FILE *f = fopen(csv_path, "r");
+    if (!f) return 0;
+
+    char line[1024];
+    if (!fgets(line, sizeof(line), f)) {
+        fclose(f);
+        return 0;
+    }
+
+    int loaded = 0;
+    while (fgets(line, sizeof(line), f)) {
+        size_t len = strlen(line);
+        while (len > 0 && (line[len - 1] == '\r' || line[len - 1] == '\n')) {
+            line[--len] = '\0';
+        }
+        if (len == 0) continue;
+
+        int game_id = 0, is_draw = 0, plies = 0, white_pieces = 0, black_pieces = 0;
+        char w_eng_str[64] = "", b_eng_str[64] = "", win_color[32] = "", win_eng_str[64] = "", reason[128] = "";
+        double time_budget = 0.0, w_avg_ms = 0.0, b_avg_ms = 0.0, duration_sec = 0.0;
+
+        char *p = line;
+        game_id = atoi(p);
+        if (game_id < 1 || game_id > total_games) continue;
+
+        p = strchr(p, ','); if (!p) continue; p++;
+        char *next_c = strchr(p, ','); if (!next_c) continue; *next_c = '\0'; strncpy(w_eng_str, p, sizeof(w_eng_str)-1); p = next_c + 1;
+        next_c = strchr(p, ','); if (!next_c) continue; *next_c = '\0'; strncpy(b_eng_str, p, sizeof(b_eng_str)-1); p = next_c + 1;
+        time_budget = atof(p);
+        p = strchr(p, ','); if (!p) continue; p++;
+        next_c = strchr(p, ','); if (!next_c) continue; *next_c = '\0'; strncpy(win_color, p, sizeof(win_color)-1); p = next_c + 1;
+        next_c = strchr(p, ','); if (!next_c) continue; *next_c = '\0'; strncpy(win_eng_str, p, sizeof(win_eng_str)-1); p = next_c + 1;
+        is_draw = atoi(p);
+        p = strchr(p, ','); if (!p) continue; p++;
+
+        if (*p == '"') {
+            p++;
+            char *quote_end = strchr(p, '"');
+            if (quote_end) {
+                *quote_end = '\0';
+                strncpy(reason, p, sizeof(reason)-1);
+                p = quote_end + 1;
+                if (*p == ',') p++;
+            }
+        } else {
+            next_c = strchr(p, ',');
+            if (next_c) {
+                *next_c = '\0';
+                strncpy(reason, p, sizeof(reason)-1);
+                p = next_c + 1;
+            }
+        }
+
+        if (sscanf(p, "%d,%lf,%lf,%lf,%d,%d", &plies, &w_avg_ms, &b_avg_ms, &duration_sec, &white_pieces, &black_pieces) < 6) {
+            continue;
+        }
+
+        int idx = game_id - 1;
+        GameRecord *rec = &records[idx];
+        rec->game_index = game_id;
+        rec->white_engine = parse_engine_name(w_eng_str);
+        rec->black_engine = parse_engine_name(b_eng_str);
+        rec->is_draw = (is_draw != 0);
+        rec->winner = (strcmp(win_color, "White") == 0) ? PLAYER_WHITE : PLAYER_BLACK;
+        strncpy(rec->reason, reason, sizeof(rec->reason)-1);
+        rec->plies = plies;
+        rec->white_move_count = (plies + 1) / 2;
+        rec->black_move_count = plies / 2;
+        rec->white_total_time = (w_avg_ms * rec->white_move_count) / 1000.0;
+        rec->black_total_time = (b_avg_ms * rec->black_move_count) / 1000.0;
+        rec->total_duration = duration_sec;
+        rec->white_pieces_remaining = white_pieces;
+        rec->black_pieces_remaining = black_pieces;
+
+        completed_flags[idx] = true;
+        loaded++;
+    }
+
+    fclose(f);
+    return loaded;
 }
 
 typedef struct {
@@ -926,8 +1018,10 @@ typedef struct {
     const CliConfig *cfg;
     const GameJob *jobs;
     GameRecord *records;
+    bool *job_completed_flags;
     int *next_job_index;
     int *jobs_completed;
+    FILE *live_csv_file;
     double tournament_start_time;
     ActiveThreadStatus *all_thread_statuses;
     pthread_mutex_t *mutex;
@@ -938,8 +1032,12 @@ static void *worker_thread_func(void *arg) {
     while (true) {
         int job_idx = -1;
         pthread_mutex_lock(ctx->mutex);
-        if (*ctx->next_job_index < ctx->total_jobs) {
-            job_idx = (*ctx->next_job_index)++;
+        while (*ctx->next_job_index < ctx->total_jobs) {
+            int candidate = (*ctx->next_job_index)++;
+            if (!ctx->job_completed_flags || !ctx->job_completed_flags[candidate]) {
+                job_idx = candidate;
+                break;
+            }
         }
         pthread_mutex_unlock(ctx->mutex);
 
@@ -953,6 +1051,14 @@ static void *worker_thread_func(void *arg) {
                                           ctx->all_thread_statuses, ctx->mutex);
 
         ctx->records[job_idx] = rec;
+        if (ctx->job_completed_flags) ctx->job_completed_flags[job_idx] = true;
+
+        if (ctx->live_csv_file) {
+            pthread_mutex_lock(ctx->mutex);
+            write_game_record_csv_row(ctx->live_csv_file, &rec, ctx->cfg->time_budget);
+            fflush(ctx->live_csv_file);
+            pthread_mutex_unlock(ctx->mutex);
+        }
     }
     return NULL;
 }
@@ -1165,6 +1271,33 @@ static int run_tournament_mode(const CliConfig *cfg) {
 
     int next_job_idx = 0;
     int jobs_completed = 0;
+    bool *job_completed_flags = (bool*)calloc(total_games, sizeof(bool));
+    if (!job_completed_flags) {
+        fprintf(stderr, "Memory allocation failed for job flags\n");
+        free(jobs);
+        free(all_records);
+        return 1;
+    }
+
+    FILE *live_csv = NULL;
+    int loaded = 0;
+    if (cfg->csv_path[0] != '\0') {
+        loaded = load_existing_csv_records(cfg->csv_path, all_records, job_completed_flags, total_games);
+        if (loaded > 0) {
+            printf("  -> [AUTO-RESUME] Found existing tournament CSV (%s).\n", cfg->csv_path);
+            printf("  -> Successfully resumed %d / %d games without loss of data!\n\n", loaded, total_games);
+            jobs_completed = loaded;
+            live_csv = fopen(cfg->csv_path, "a");
+        } else {
+            ensure_parent_dir_exists(cfg->csv_path);
+            live_csv = fopen(cfg->csv_path, "w");
+            if (live_csv) {
+                fprintf(live_csv, "game_id,white_engine,black_engine,time_budget,winner_color,winner_engine,is_draw,reason,plies,white_avg_ms,black_avg_ms,duration_sec,white_pieces,black_pieces\n");
+                fflush(live_csv);
+            }
+        }
+    }
+
     pthread_mutex_t mutex;
     pthread_mutex_init(&mutex, NULL);
 
@@ -1183,8 +1316,10 @@ static int run_tournament_mode(const CliConfig *cfg) {
             ctxs[t].cfg = cfg;
             ctxs[t].jobs = jobs;
             ctxs[t].records = all_records;
+            ctxs[t].job_completed_flags = job_completed_flags;
             ctxs[t].next_job_index = &next_job_idx;
             ctxs[t].jobs_completed = &jobs_completed;
+            ctxs[t].live_csv_file = live_csv;
             ctxs[t].tournament_start_time = tourney_start;
             ctxs[t].all_thread_statuses = thread_statuses;
             ctxs[t].mutex = &mutex;
@@ -1199,11 +1334,25 @@ static int run_tournament_mode(const CliConfig *cfg) {
         free(ctxs);
     } else {
         for (int i = 0; i < total_games; i++) {
+            if (job_completed_flags[i]) continue;
             all_records[i] = play_single_game(jobs[i].game_index, jobs[i].white_engine, jobs[i].black_engine,
                                               cfg, 0, 1, total_games, &jobs_completed,
                                               tourney_start, thread_statuses, &mutex);
+            job_completed_flags[i] = true;
+            if (live_csv) {
+                pthread_mutex_lock(&mutex);
+                write_game_record_csv_row(live_csv, &all_records[i], cfg->time_budget);
+                fflush(live_csv);
+                pthread_mutex_unlock(&mutex);
+            }
         }
     }
+
+    if (live_csv) {
+        fclose(live_csv);
+        live_csv = NULL;
+    }
+    free(job_completed_flags);
 
     if (!cfg->quiet) clear_live_dashboard();
     pthread_mutex_destroy(&mutex);

@@ -785,6 +785,68 @@ static void ga_export_csv_row(FILE *f, const Chromosome *c, int rank, const GACo
             bm_str, c->use_book ? 1 : 0, c->use_db ? 1 : 0);
 }
 
+typedef struct {
+    uint32_t   magic; // 0x4741434BU "GACK"
+    int        target_engine;
+    int        pop_size;
+    int        completed_gen;
+    int        total_games;
+    uint32_t   rng;
+    Chromosome best_overall;
+    Population pop;
+} GACheckpoint;
+
+static bool ga_save_checkpoint(const char *csv_path, int completed_gen, int total_games, uint32_t rng, const Chromosome *best, const Population *pop, int target_engine) {
+    if (!csv_path || !*csv_path) return false;
+    char ckpt_path[512];
+    snprintf(ckpt_path, sizeof(ckpt_path), "%s.ckpt", csv_path);
+    FILE *f = fopen(ckpt_path, "wb");
+    if (!f) return false;
+    GACheckpoint ckpt;
+    memset(&ckpt, 0, sizeof(ckpt));
+    ckpt.magic = 0x4741434BU;
+    ckpt.target_engine = target_engine;
+    ckpt.pop_size = pop->size;
+    ckpt.completed_gen = completed_gen;
+    ckpt.total_games = total_games;
+    ckpt.rng = rng;
+    ckpt.best_overall = *best;
+    ckpt.pop = *pop;
+    fwrite(&ckpt, sizeof(ckpt), 1, f);
+    fclose(f);
+    return true;
+}
+
+static bool ga_load_checkpoint(const char *csv_path, int *out_completed_gen, int *out_total_games, uint32_t *out_rng, Chromosome *out_best, Population *out_pop, int target_engine, int expected_pop_size) {
+    if (!csv_path || !*csv_path) return false;
+    char ckpt_path[512];
+    snprintf(ckpt_path, sizeof(ckpt_path), "%s.ckpt", csv_path);
+    FILE *f = fopen(ckpt_path, "rb");
+    if (!f) return false;
+    GACheckpoint ckpt;
+    if (fread(&ckpt, sizeof(ckpt), 1, f) != 1) {
+        fclose(f);
+        return false;
+    }
+    fclose(f);
+    if (ckpt.magic != 0x4741434BU || ckpt.target_engine != target_engine || ckpt.pop_size != expected_pop_size) {
+        return false;
+    }
+    *out_completed_gen = ckpt.completed_gen;
+    *out_total_games = ckpt.total_games;
+    *out_rng = ckpt.rng;
+    *out_best = ckpt.best_overall;
+    *out_pop = ckpt.pop;
+    return true;
+}
+
+static void ga_remove_checkpoint(const char *csv_path) {
+    if (!csv_path || !*csv_path) return;
+    char ckpt_path[512];
+    snprintf(ckpt_path, sizeof(ckpt_path), "%s.ckpt", csv_path);
+    remove(ckpt_path);
+}
+
 // Main High-level Genetic Algorithm Tuning Runner
 int tune_ga_run(const GAConfig *cfg, GAResult *out_result) {
     if (!cfg) return 1;
@@ -807,24 +869,41 @@ int tune_ga_run(const GAConfig *cfg, GAResult *out_result) {
     printf("\n");
 
     // Initialize WLD & Book Subsystems
-    #ifdef _WIN32
     wld_init_backend(WLD_BACKEND_OFFICIAL_8PIECE);
-    #else
-    wld_init_backend(WLD_BACKEND_REDUCED_NATIVE);
-    #endif
     opening_book_init(BOOK_BACKEND_KINGSROW_ODB, NULL);
 
     uint32_t rng = cfg->seed ? cfg->seed : 0x12345678U;
     Population pop;
-    ga_population_init(&pop, cfg, &rng);
+    Chromosome best_overall;
+    memset(&best_overall, 0, sizeof(Chromosome));
+    best_overall.fitness = -1e9;
+
+    int total_games = 0;
+    int start_gen = 0;
+    bool resumed = false;
+
+    if (cfg->csv_path[0] != '\0') {
+        resumed = ga_load_checkpoint(cfg->csv_path, &start_gen, &total_games, &rng, &best_overall, &pop, cfg->target_engine, cfg->population_size);
+    }
 
     FILE *csv_file = NULL;
     if (cfg->csv_path[0] != '\0') {
         ga_ensure_parent_dir(cfg->csv_path);
-        csv_file = fopen(cfg->csv_path, "w");
-        if (csv_file) {
-            fprintf(csv_file, "generation,rank,id,target_engine,score_pct,points,games_played,wins,draws,losses,elo,param_exploration,param_tau,rollout_epsilon,time_budget,max_rollout_depth,book_temperature,book_mode,use_book,use_db\n");
+        if (resumed && start_gen > 0) {
+            printf("  -> [AUTO-RESUME] Found checkpoint. Resuming from Generation %d (%d games already simulated)...\n\n",
+                   start_gen + 1, total_games);
+            csv_file = fopen(cfg->csv_path, "a");
+        } else {
+            csv_file = fopen(cfg->csv_path, "w");
+            if (csv_file) {
+                fprintf(csv_file, "generation,rank,id,target_engine,score_pct,points,games_played,wins,draws,losses,elo,param_exploration,param_tau,rollout_epsilon,time_budget,max_rollout_depth,book_temperature,book_mode,use_book,use_db\n");
+            }
+            ga_population_init(&pop, cfg, &rng);
+            start_gen = 0;
+            total_games = 0;
         }
+    } else {
+        ga_population_init(&pop, cfg, &rng);
     }
 
     #ifdef _WIN32
@@ -836,14 +915,9 @@ int tune_ga_run(const GAConfig *cfg, GAResult *out_result) {
     clock_gettime(CLOCK_MONOTONIC, &t_start);
     #endif
 
-    Chromosome best_overall;
-    memset(&best_overall, 0, sizeof(Chromosome));
-    best_overall.fitness = -1e9;
-
-    int total_games = 0;
     int games_per_gen = ((cfg->population_size * (cfg->population_size - 1)) / 2) * cfg->games_per_pair;
 
-    for (int gen = 0; gen < cfg->generations; gen++) {
+    for (int gen = start_gen; gen < cfg->generations; gen++) {
         printf("--- Running Generation %d / %d ---\n", gen + 1, cfg->generations);
         ga_population_evaluate(&pop, cfg);
         total_games += games_per_gen;
@@ -867,6 +941,11 @@ int tune_ga_run(const GAConfig *cfg, GAResult *out_result) {
         if (gen < cfg->generations - 1) {
             ga_population_evolve(&pop, cfg, &rng);
         }
+
+        // Persist checkpoint after each generation
+        if (cfg->csv_path[0] != '\0') {
+            ga_save_checkpoint(cfg->csv_path, gen + 1, total_games, rng, &best_overall, &pop, cfg->target_engine);
+        }
     }
 
     #ifdef _WIN32
@@ -876,6 +955,10 @@ int tune_ga_run(const GAConfig *cfg, GAResult *out_result) {
     clock_gettime(CLOCK_MONOTONIC, &t_end);
     double elapsed_sec = (double)(t_end.tv_sec - t_start.tv_sec) + (double)(t_end.tv_nsec - t_start.tv_nsec) * 1e-9;
     #endif
+
+    if (cfg->csv_path[0] != '\0') {
+        ga_remove_checkpoint(cfg->csv_path);
+    }
 
     if (csv_file) {
         fclose(csv_file);

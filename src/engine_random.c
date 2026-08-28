@@ -171,29 +171,25 @@ void engine_destroy(Engine *engine) {
 void engine_config_init_default(EngineConfig *cfg) {
     if (!cfg) return;
     cfg->mcts_time_budget = 1.0;
-    cfg->mcts_exploration = 1.41421356f;
-    cfg->mcts_max_rollout_depth = 70;
-    cfg->mcts_rollout_epsilon = 0.15f;
-    cfg->mcts_use_db = true;
+    cfg->mcts_exploration = 0.9129f;
+    cfg->mcts_max_rollout_depth = 42;
+    cfg->mcts_rollout_epsilon = 0.1701f;
+    cfg->mcts_use_db = false;
     cfg->mcts_use_book = true;
     cfg->mcts_debug_log = false;
     cfg->puct_time_budget = 1.0;
-    cfg->puct_c_puct = 1.5f;
-    cfg->puct_temperature = 1.0f;
+    cfg->puct_c_puct = 3.1821f;
+    cfg->puct_temperature = 1.3406f;
     cfg->puct_max_rollout_depth = 70;
-    cfg->puct_rollout_epsilon = 0.15f;
-    cfg->puct_use_db = true;
-    cfg->puct_use_book = true;
+    cfg->puct_rollout_epsilon = 0.2553f;
+    cfg->puct_use_db = false;
+    cfg->puct_use_book = false;
     cfg->puct_debug_log = false;
     cfg->book_backend = BOOK_BACKEND_KINGSROW_ODB;
-    cfg->book_mode = BOOK_MODE_PUCT_GUIDED;
-    cfg->book_temperature = 1.0f;
+    cfg->book_mode = BOOK_MODE_GOOD;
+    cfg->book_temperature = 2.2806f;
     cfg->book_custom_path[0] = '\0';
-#ifdef _WIN32
     cfg->wld_backend = WLD_BACKEND_OFFICIAL_8PIECE;
-#else
-    cfg->wld_backend = WLD_BACKEND_REDUCED_NATIVE;
-#endif
     cfg->wld_custom_path[0] = '\0';
     cfg->cb_search_time = 1.0;
     cfg->kr_search_time = 1.0;

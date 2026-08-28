@@ -9,6 +9,9 @@ ______________________________________________________________________________*/
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #define CB_FREE 0
 #define CB_WHITE 1
@@ -52,7 +55,11 @@ typedef struct {
 static _Thread_local int g_alphabetas = 0;
 static _Thread_local int g_playnow = 0;
 static _Thread_local CBCBMove g_best_cb_move;
+#ifdef _WIN32
+static _Thread_local DWORD g_start_tick = 0;
+#else
 static _Thread_local clock_t g_starttime;
+#endif
 static _Thread_local double g_absolute_maxtime = 1.0;
 
 static CBCoor numbertocoor(int n) {
@@ -263,15 +270,15 @@ static int firstalphabeta(int b[46], int depth, int alpha, int beta, int color, 
 
     int capture = testcapture(b, color);
 
-    if (depth == 0) {
-        if (capture == 0) return evaluation(b, color);
-        else depth = 1;
+    if (depth <= 0) {
+        if (capture == 0 || depth <= -8) return evaluation(b, color);
     }
 
     CBMove2 movelist[MAXMOVES];
     int numberofmoves = 0;
 
     if (capture == 0) {
+        if (depth <= 0) return evaluation(b, color);
         numberofmoves = generatemovelist(b, movelist, color);
         if (numberofmoves == 0) {
             return (color == CB_BLACK) ? -5000 : 5000;
@@ -309,24 +316,30 @@ static int firstalphabeta(int b[46], int depth, int alpha, int beta, int color, 
 
 static int alphabeta(int b[46], int depth, int alpha, int beta, int color) {
     g_alphabetas++;
-    if ((g_alphabetas & 0x3ff) == 0) {
+    if ((g_alphabetas & 0x7f) == 0) {
+#ifdef _WIN32
+        if ((GetTickCount() - g_start_tick) >= (DWORD)(g_absolute_maxtime * 1000.0)) {
+            g_playnow = 1;
+        }
+#else
         if ((double)(clock() - g_starttime) / CLOCKS_PER_SEC >= g_absolute_maxtime) {
             g_playnow = 1;
         }
+#endif
     }
     if (g_playnow) return 0;
 
     int capture = testcapture(b, color);
 
-    if (depth == 0) {
-        if (capture == 0) return evaluation(b, color);
-        else depth = 1;
+    if (depth <= 0) {
+        if (capture == 0 || depth <= -8) return evaluation(b, color);
     }
 
     CBMove2 movelist[MAXMOVES];
     int numberofmoves = 0;
 
     if (capture == 0) {
+        if (depth <= 0) return evaluation(b, color);
         numberofmoves = generatemovelist(b, movelist, color);
         if (numberofmoves == 0) {
             return (color == CB_BLACK) ? -5000 : 5000;
@@ -355,7 +368,11 @@ static int alphabeta(int b[46], int depth, int alpha, int beta, int color) {
 static int checkers_search(int b[46], int color, double maxtime) {
     g_alphabetas = 0;
     g_playnow = 0;
+#ifdef _WIN32
+    g_start_tick = GetTickCount();
+#else
     g_starttime = clock();
+#endif
     g_absolute_maxtime = maxtime;
 
     CBMove2 movelist[MAXMOVES];
@@ -378,7 +395,11 @@ static int checkers_search(int b[46], int color, double maxtime) {
 
     int eval = firstalphabeta(b, 1, -10000, 10000, color, &best);
     for (int d = 2; d <= MAXDEPTH; d++) {
+#ifdef _WIN32
+        if ((GetTickCount() - g_start_tick) >= (DWORD)(maxtime * 1000.0)) break;
+#else
         if ((double)(clock() - g_starttime) / CLOCKS_PER_SEC >= maxtime) break;
+#endif
         lastbest = best;
         eval = firstalphabeta(b, d, -10000, 10000, color, &best);
 

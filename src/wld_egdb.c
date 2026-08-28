@@ -327,9 +327,9 @@ int wld_egdb_lookup_raw(EGDB_POSITION *pos, int color, int cl) {
 #endif
 }
 
-WLDValue wld_egdb_probe(const GameState *game) {
+static WLDValue wld_egdb_probe_depth(const GameState *game, int depth) {
 #ifdef _WIN32
-    if (!game) return WLD_UNKNOWN;
+    if (!game || depth > 8) return WLD_UNKNOWN;
     if (!s_is_ready || !s_egdb_handle || !s_egdb_handle->lookup) return WLD_UNKNOWN;
 
     // Direct game terminal check
@@ -366,7 +366,7 @@ WLDValue wld_egdb_probe(const GameState *game) {
         for (int i = 0; i < moves.count; i++) {
             GameState next = *game;
             game_execute_move(&next, moves.moves[i]);
-            WLDValue child_res = wld_egdb_probe(&next);
+            WLDValue child_res = wld_egdb_probe_depth(&next, depth + 1);
             if (game->current_player == PLAYER_WHITE) {
                 if (child_res == WLD_WIN_WHITE) return WLD_WIN_WHITE;
                 if (child_res != WLD_WIN_BLACK) all_losses = false;
@@ -389,25 +389,26 @@ WLDValue wld_egdb_probe(const GameState *game) {
 
     // Direct quiescent EGDB lookup
     EGDB_POSITION pos;
-    pos.white = wm | wk;
     pos.black = bm | bk;
+    pos.white = wm | wk;
     pos.king  = wk | bk;
 
     if (pos.white == 0 || pos.black == 0 || (pos.white & pos.black) != 0) {
         return WLD_UNKNOWN;
     }
 
-    // EGDB side to move: 0 = White, 1 = Black
-    int color = (game->current_player == PLAYER_WHITE) ? 0 : 1;
+    // EGDB side to move: EGDB_BLACK = 0, EGDB_WHITE = 1
+    int color = (game->current_player == PLAYER_WHITE) ? 1 : 0;
     int res = -1;
 
     if (s_egdb_cs_inited) {
         EnterCriticalSection(&s_egdb_cs);
         __try {
             res = s_egdb_handle->lookup(s_egdb_handle, &pos, color, 0);
-        } __finally {
-            LeaveCriticalSection(&s_egdb_cs);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            res = -1;
         }
+        LeaveCriticalSection(&s_egdb_cs);
     } else {
         __try {
             res = s_egdb_handle->lookup(s_egdb_handle, &pos, color, 0);
@@ -416,18 +417,24 @@ WLDValue wld_egdb_probe(const GameState *game) {
         }
     }
 
-    // Kingsrow EGDB return codes: 2 = WIN, 1 = DRAW, 0 = LOSS (relative to color to move)
-    if (res == 2) { // WIN for player to move
+    // Kingsrow EGDB return codes:
+    // 1 = EGDB_WIN, 2 = EGDB_LOSS, 3 = EGDB_DRAW (relative to color to move)
+    if (res == 1) { // WIN for player to move
         return (game->current_player == PLAYER_WHITE) ? WLD_WIN_WHITE : WLD_WIN_BLACK;
-    } else if (res == 0) { // LOSS for player to move
+    } else if (res == 2) { // LOSS for player to move
         return (game->current_player == PLAYER_WHITE) ? WLD_WIN_BLACK : WLD_WIN_WHITE;
-    } else if (res == 1) { // DRAW
+    } else if (res == 3) { // DRAW
         return WLD_DRAW;
     }
 
     return WLD_UNKNOWN;
 #else
     (void)game;
+    (void)depth;
     return WLD_UNKNOWN;
 #endif
+}
+
+WLDValue wld_egdb_probe(const GameState *game) {
+    return wld_egdb_probe_depth(game, 0);
 }

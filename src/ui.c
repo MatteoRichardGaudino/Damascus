@@ -286,11 +286,11 @@ static void step_time_preset(double *val, int delta) {
     *val = s_time_presets[new_idx];
 }
 
-static const float  s_mcts_alphas[]       = { 0.50f, 0.80f, 1.00f, 1.4142f, 1.80f, 2.20f, 2.80f };
-static const int    s_mcts_depths[]       = { 20, 35, 50, 70, 100, 150, 200 };
-static const float  s_mcts_epsilons[]     = { 0.05f, 0.10f, 0.15f, 0.20f, 0.30f, 0.40f, 1.00f };
-static const float  s_puct_c_pucts[]      = { 0.50f, 0.80f, 1.00f, 1.50f, 2.00f, 2.50f, 3.50f };
-static const float  s_puct_temperatures[] = { 0.20f, 0.50f, 0.80f, 1.00f, 1.20f, 1.50f, 2.00f };
+static const float  s_mcts_alphas[]       = { 0.50f, 0.80f, 0.91f, 1.00f, 1.4142f, 1.80f, 2.20f, 2.80f };
+static const int    s_mcts_depths[]       = { 20, 35, 42, 50, 70, 100, 150, 200 };
+static const float  s_mcts_epsilons[]     = { 0.05f, 0.10f, 0.15f, 0.17f, 0.20f, 0.255f, 0.30f, 0.40f, 1.00f };
+static const float  s_puct_c_pucts[]      = { 0.50f, 0.80f, 1.00f, 1.50f, 2.00f, 2.50f, 3.18f, 3.50f };
+static const float  s_puct_temperatures[] = { 0.20f, 0.50f, 0.80f, 1.00f, 1.34f, 1.50f, 2.00f };
 static const int    s_puct_depths[]       = { 20, 35, 50, 70, 100, 150, 200 };
 
 static void step_float_val(float *val, const float *arr, int count, int delta) {
@@ -665,23 +665,24 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             ui_add_text("LIBRO APERTURE (OPENING BOOK):", row_x, r5_y + 8.0f * S, 1.05f * S, text_white);
             
             bool book_avail0 = opening_book_is_available(ui->engine_config.book_backend, ui->engine_config.book_custom_path);
+            bool book_active0 = book_avail0 && ui->engine_config.mcts_use_book && (ui->engine_config.book_mode != BOOK_MODE_OFF);
             const char *bk_str0 = "DISATTIVATO";
-            if (book_avail0) {
+            if (book_active0) {
                 if (ui->engine_config.book_mode == BOOK_MODE_PUCT_GUIDED) bk_str0 = "ALBERO GUIDATO";
                 else if (ui->engine_config.book_mode == BOOK_MODE_BEST) bk_str0 = "MIGLIORI (BEST)";
                 else if (ui->engine_config.book_mode == BOOK_MODE_GOOD) bk_str0 = "VARIATE (GOOD)";
                 else if (ui->engine_config.book_mode == BOOK_MODE_ALL) bk_str0 = "TUTTE LE MOSSE";
             }
-            vec4 *bk_btn_c0 = (!book_avail0) ? &btn_danger : 
-                              (ui->engine_config.book_mode != BOOK_MODE_OFF ? &btn_start : &btn_normal);
+            vec4 *bk_btn_c0 = (!book_avail0 && ui->engine_config.mcts_use_book) ? &btn_danger : 
+                              (book_active0 ? &btn_start : &btn_normal);
             float bk_btn_w = 225.0f * S;
             ui_add_quad(step_x - 40.0f * S, r5_y, bk_btn_w, 28.0f * S, *bk_btn_c0);
             ui_add_text_centered(bk_str0, step_x - 40.0f * S + bk_btn_w * 0.5f, r5_y + 14.0f * S, 0.90f * S, text_white);
             
             if (!book_avail0) {
                 ui_add_text("[FILE .ODB MANCANTE - DISABILITATO]", row_x, r5_y + 28.0f * S, 0.85f * S, text_red);
-            } else if (ui->engine_config.book_mode != BOOK_MODE_OFF) {
-                ui_add_text("[LIBRO APERTURE: 1.76M POSIZIONI ATTIVO]", row_x, r5_y + 28.0f * S, 0.85f * S, text_green);
+            } else if (book_active0) {
+                ui_add_text("[LIBRO APERTURE: 1.76M POSIZIONI ATTIVO (GOOD)]", row_x, r5_y + 28.0f * S, 0.85f * S, text_green);
             } else {
                 ui_add_text("[LIBRO APERTURE: DISATTIVATO]", row_x, r5_y + 28.0f * S, 0.85f * S, text_sub);
             }
@@ -691,19 +692,15 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             ui_add_text("DATABASE FINALI (WLD TABLEBASE):", row_x, r6_y + 8.0f * S, 1.05f * S, text_white);
             
             WLDStatus st0 = wld_get_status(ui->engine_config.wld_backend);
-            vec4 *db_btn_c0 = (ui->engine_config.wld_backend != WLD_BACKEND_NONE && st0.available) ? &btn_start : 
-                              (ui->engine_config.wld_backend == WLD_BACKEND_NONE ? &btn_normal : &btn_danger);
-            const char *db_str0 = "DISATTIVATO";
-            if (ui->engine_config.wld_backend == WLD_BACKEND_OFFICIAL_8PIECE) {
-                db_str0 = "UFFICIALE 8P (data/wld)";
-            } else if (ui->engine_config.wld_backend == WLD_BACKEND_REDUCED_NATIVE) {
-                db_str0 = "RIDOTTO NATIVO (4P)";
-            }
+            bool db_active0 = (ui->engine_config.wld_backend != WLD_BACKEND_NONE) && ui->engine_config.mcts_use_db && st0.available;
+            vec4 *db_btn_c0 = db_active0 ? &btn_start : (ui->engine_config.mcts_use_db ? &btn_danger : &btn_normal);
+            const char *db_str0 = ui->engine_config.mcts_use_db ? ((ui->engine_config.wld_backend == WLD_BACKEND_OFFICIAL_8PIECE) ? 
+                                  "UFFICIALE 8P (data/wld)" : "DISATTIVATO") : "DISATTIVATO";
             ui_add_quad(step_x - 40.0f * S, r6_y, bk_btn_w, 28.0f * S, *db_btn_c0);
             ui_add_text_centered(db_str0, step_x - 40.0f * S + bk_btn_w * 0.5f, r6_y + 14.0f * S, 0.90f * S, text_white);
             
-            vec4 *st_col0 = st0.available ? (ui->engine_config.wld_backend == WLD_BACKEND_NONE ? &text_sub : &text_green) : &text_red;
-            ui_add_text(st0.status_message, row_x, r6_y + 28.0f * S, 0.85f * S, *st_col0);
+            vec4 *st_col0 = !ui->engine_config.mcts_use_db ? &text_sub : (st0.available ? &text_green : &text_red);
+            ui_add_text(ui->engine_config.mcts_use_db ? st0.status_message : "[DATABASE FINALI: DISATTIVATO DA PROFILO GA]", row_x, r6_y + 28.0f * S, 0.85f * S, *st_col0);
  
             // Parameter 7: Debug logging toggle
             float r7_y = s_y + 310.0f * S;
@@ -809,25 +806,26 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             ui_add_text("LIBRO APERTURE (OPENING BOOK):", row_x, r6_y + 7.0f * S, 1.05f * S, text_white);
             
             bool book_avail1 = opening_book_is_available(ui->engine_config.book_backend, ui->engine_config.book_custom_path);
+            bool book_active1 = book_avail1 && ui->engine_config.puct_use_book && (ui->engine_config.book_mode != BOOK_MODE_OFF);
             const char *bk_str1 = "DISATTIVATO";
-            if (book_avail1) {
+            if (book_active1) {
                 if (ui->engine_config.book_mode == BOOK_MODE_PUCT_GUIDED) bk_str1 = "PUCT GUIDATO";
                 else if (ui->engine_config.book_mode == BOOK_MODE_BEST) bk_str1 = "MIGLIORI (BEST)";
                 else if (ui->engine_config.book_mode == BOOK_MODE_GOOD) bk_str1 = "VARIATE (GOOD)";
                 else if (ui->engine_config.book_mode == BOOK_MODE_ALL) bk_str1 = "TUTTE LE MOSSE";
             }
-            vec4 *bk_btn_c1 = (!book_avail1) ? &btn_danger : 
-                              (ui->engine_config.book_mode != BOOK_MODE_OFF ? &btn_start : &btn_normal);
+            vec4 *bk_btn_c1 = (!book_avail1 && ui->engine_config.puct_use_book) ? &btn_danger : 
+                              (book_active1 ? &btn_start : &btn_normal);
             float bk_btn_w1 = 225.0f * S;
             ui_add_quad(step_x - 40.0f * S, r6_y, bk_btn_w1, 26.0f * S, *bk_btn_c1);
             ui_add_text_centered(bk_str1, step_x - 40.0f * S + bk_btn_w1 * 0.5f, r6_y + 13.0f * S, 0.90f * S, text_white);
             
-            if (!book_avail1) {
+            if (!ui->engine_config.puct_use_book) {
+                ui_add_text("[LIBRO APERTURE: DISATTIVATO DA PROFILO GA]", row_x, r6_y + 26.0f * S, 0.85f * S, text_sub);
+            } else if (!book_avail1) {
                 ui_add_text("[FILE .ODB MANCANTE - DISABILITATO]", row_x, r6_y + 26.0f * S, 0.85f * S, text_red);
-            } else if (ui->engine_config.book_mode != BOOK_MODE_OFF) {
-                ui_add_text("[LIBRO APERTURE: 1.76M POSIZIONI ATTIVO]", row_x, r6_y + 26.0f * S, 0.85f * S, text_green);
             } else {
-                ui_add_text("[LIBRO APERTURE: DISATTIVATO]", row_x, r6_y + 26.0f * S, 0.85f * S, text_sub);
+                ui_add_text("[LIBRO APERTURE: 1.76M POSIZIONI ATTIVO]", row_x, r6_y + 26.0f * S, 0.85f * S, text_green);
             }
 
             // Parameter 7: Database backend selector
@@ -835,19 +833,15 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             ui_add_text("DATABASE FINALI (WLD TABLEBASE):", row_x, r7_y + 7.0f * S, 1.05f * S, text_white);
             
             WLDStatus st1 = wld_get_status(ui->engine_config.wld_backend);
-            vec4 *db_btn_c1 = (ui->engine_config.wld_backend != WLD_BACKEND_NONE && st1.available) ? &btn_start : 
-                              (ui->engine_config.wld_backend == WLD_BACKEND_NONE ? &btn_normal : &btn_danger);
-            const char *db_str1 = "DISATTIVATO";
-            if (ui->engine_config.wld_backend == WLD_BACKEND_OFFICIAL_8PIECE) {
-                db_str1 = "UFFICIALE 8P (data/wld)";
-            } else if (ui->engine_config.wld_backend == WLD_BACKEND_REDUCED_NATIVE) {
-                db_str1 = "RIDOTTO NATIVO (4P)";
-            }
+            bool db_active1 = (ui->engine_config.wld_backend != WLD_BACKEND_NONE) && ui->engine_config.puct_use_db && st1.available;
+            vec4 *db_btn_c1 = db_active1 ? &btn_start : (ui->engine_config.puct_use_db ? &btn_danger : &btn_normal);
+            const char *db_str1 = ui->engine_config.puct_use_db ? ((ui->engine_config.wld_backend == WLD_BACKEND_OFFICIAL_8PIECE) ? 
+                                  "UFFICIALE 8P (data/wld)" : "DISATTIVATO") : "DISATTIVATO";
             ui_add_quad(step_x - 40.0f * S, r7_y, bk_btn_w1, 26.0f * S, *db_btn_c1);
             ui_add_text_centered(db_str1, step_x - 40.0f * S + bk_btn_w1 * 0.5f, r7_y + 13.0f * S, 0.90f * S, text_white);
             
-            vec4 *st_col1 = st1.available ? (ui->engine_config.wld_backend == WLD_BACKEND_NONE ? &text_sub : &text_green) : &text_red;
-            ui_add_text(st1.status_message, row_x, r7_y + 26.0f * S, 0.85f * S, *st_col1);
+            vec4 *st_col1 = !ui->engine_config.puct_use_db ? &text_sub : (st1.available ? &text_green : &text_red);
+            ui_add_text(ui->engine_config.puct_use_db ? st1.status_message : "[DATABASE FINALI: DISATTIVATO DA PROFILO GA]", row_x, r7_y + 26.0f * S, 0.85f * S, *st_col1);
  
             // Parameter 8: Debug logging toggle
             float r8_y = s_y + 310.0f * S;
@@ -1391,16 +1385,22 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
                 ui_commit_time_input(ui);
                 bool avail = opening_book_is_available(ui->engine_config.book_backend, ui->engine_config.book_custom_path);
                 if (!avail) {
-                    ui->engine_config.book_mode = BOOK_MODE_OFF;
                     ui->engine_config.mcts_use_book = false;
-                    ui->engine_config.puct_use_book = false;
                 } else {
-                    BookPlayMode next_m = (ui->engine_config.book_mode == BOOK_MODE_PUCT_GUIDED) ? BOOK_MODE_BEST :
-                                          (ui->engine_config.book_mode == BOOK_MODE_BEST) ? BOOK_MODE_GOOD :
-                                          (ui->engine_config.book_mode == BOOK_MODE_GOOD) ? BOOK_MODE_OFF : BOOK_MODE_PUCT_GUIDED;
-                    ui->engine_config.book_mode = next_m;
-                    ui->engine_config.mcts_use_book = (next_m != BOOK_MODE_OFF);
-                    ui->engine_config.puct_use_book = (next_m != BOOK_MODE_OFF);
+                    if (!ui->engine_config.mcts_use_book) {
+                        ui->engine_config.mcts_use_book = true;
+                        ui->engine_config.book_mode = BOOK_MODE_GOOD;
+                    } else {
+                        BookPlayMode next_m = (ui->engine_config.book_mode == BOOK_MODE_GOOD) ? BOOK_MODE_BEST :
+                                              (ui->engine_config.book_mode == BOOK_MODE_BEST) ? BOOK_MODE_ALL :
+                                              (ui->engine_config.book_mode == BOOK_MODE_ALL) ? BOOK_MODE_PUCT_GUIDED : BOOK_MODE_OFF;
+                        if (next_m == BOOK_MODE_OFF) {
+                            ui->engine_config.mcts_use_book = false;
+                        } else {
+                            ui->engine_config.book_mode = next_m;
+                            ui->engine_config.mcts_use_book = true;
+                        }
+                    }
                 }
                 return true;
             }
@@ -1408,11 +1408,7 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
             // Parameter 6: Database backend selector
             if (point_in_rect(mouse_x, mouse_y, step_x - 40.0f * S, r6_y, bk_btn_w, 28.0f * S)) {
                 ui_commit_time_input(ui);
-                WLDBackendType next_b = (ui->engine_config.wld_backend == WLD_BACKEND_OFFICIAL_8PIECE) ? WLD_BACKEND_REDUCED_NATIVE :
-                                        (ui->engine_config.wld_backend == WLD_BACKEND_REDUCED_NATIVE ? WLD_BACKEND_NONE : WLD_BACKEND_OFFICIAL_8PIECE);
-                ui->engine_config.wld_backend = next_b;
-                ui->engine_config.mcts_use_db = (next_b != WLD_BACKEND_NONE);
-                ui->engine_config.puct_use_db = (next_b != WLD_BACKEND_NONE);
+                ui->engine_config.mcts_use_db = !ui->engine_config.mcts_use_db;
                 return true;
             }
 
@@ -1509,16 +1505,22 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
                 ui_commit_time_input(ui);
                 bool avail = opening_book_is_available(ui->engine_config.book_backend, ui->engine_config.book_custom_path);
                 if (!avail) {
-                    ui->engine_config.book_mode = BOOK_MODE_OFF;
-                    ui->engine_config.mcts_use_book = false;
                     ui->engine_config.puct_use_book = false;
                 } else {
-                    BookPlayMode next_m = (ui->engine_config.book_mode == BOOK_MODE_PUCT_GUIDED) ? BOOK_MODE_BEST :
-                                          (ui->engine_config.book_mode == BOOK_MODE_BEST) ? BOOK_MODE_GOOD :
-                                          (ui->engine_config.book_mode == BOOK_MODE_GOOD) ? BOOK_MODE_OFF : BOOK_MODE_PUCT_GUIDED;
-                    ui->engine_config.book_mode = next_m;
-                    ui->engine_config.mcts_use_book = (next_m != BOOK_MODE_OFF);
-                    ui->engine_config.puct_use_book = (next_m != BOOK_MODE_OFF);
+                    if (!ui->engine_config.puct_use_book) {
+                        ui->engine_config.puct_use_book = true;
+                        ui->engine_config.book_mode = BOOK_MODE_GOOD;
+                    } else {
+                        BookPlayMode next_m = (ui->engine_config.book_mode == BOOK_MODE_GOOD) ? BOOK_MODE_PUCT_GUIDED :
+                                              (ui->engine_config.book_mode == BOOK_MODE_PUCT_GUIDED) ? BOOK_MODE_BEST :
+                                              (ui->engine_config.book_mode == BOOK_MODE_BEST) ? BOOK_MODE_ALL : BOOK_MODE_OFF;
+                        if (next_m == BOOK_MODE_OFF) {
+                            ui->engine_config.puct_use_book = false;
+                        } else {
+                            ui->engine_config.book_mode = next_m;
+                            ui->engine_config.puct_use_book = true;
+                        }
+                    }
                 }
                 return true;
             }
@@ -1526,11 +1528,7 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
             // Parameter 7: Database backend selector
             if (point_in_rect(mouse_x, mouse_y, step_x - 40.0f * S, r7_y, bk_btn_w1, 26.0f * S)) {
                 ui_commit_time_input(ui);
-                WLDBackendType next_b = (ui->engine_config.wld_backend == WLD_BACKEND_OFFICIAL_8PIECE) ? WLD_BACKEND_REDUCED_NATIVE :
-                                        (ui->engine_config.wld_backend == WLD_BACKEND_REDUCED_NATIVE ? WLD_BACKEND_NONE : WLD_BACKEND_OFFICIAL_8PIECE);
-                ui->engine_config.wld_backend = next_b;
-                ui->engine_config.mcts_use_db = (next_b != WLD_BACKEND_NONE);
-                ui->engine_config.puct_use_db = (next_b != WLD_BACKEND_NONE);
+                ui->engine_config.puct_use_db = !ui->engine_config.puct_use_db;
                 return true;
             }
 
