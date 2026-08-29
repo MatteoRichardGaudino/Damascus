@@ -51,9 +51,10 @@ void wld_egdb_close(void);
 // Check if EGDB tablebase is currently loaded and ready
 bool wld_egdb_is_ready(void);
 
-// Probe endgame position (GameState with <= 8 pieces)
+// Probe endgame position (GameState or CompactState with <= 8 pieces)
 // Returns WLD_UNKNOWN if not in tablebase or driver not initialized
 WLDValue wld_egdb_probe(const GameState *game);
+WLDValue wld_egdb_probe_compact(const CompactState *state);
 
 // Direct lookup on raw EGDB_POSITION
 int wld_egdb_lookup_raw(EGDB_POSITION *pos, int color, int cl);

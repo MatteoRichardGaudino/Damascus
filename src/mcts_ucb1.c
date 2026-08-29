@@ -220,7 +220,7 @@ static bool boards_equal(const Board *a, const Board *b) {
 }
 
 // Rollout evaluation cutoff with heuristic material evaluation and depth discounting
-static float evaluate_rollout_terminal(const GameState *sim_state, Player ai_player, int total_depth) {
+static float evaluate_rollout_terminal(const CompactState *sim_state, Player ai_player, int total_depth) {
     if (sim_state->is_game_over) {
         return mcts_compute_depth_discounted_reward(
             !sim_state->is_draw && (sim_state->winner == ai_player),
@@ -248,7 +248,7 @@ static float evaluate_rollout_terminal(const GameState *sim_state, Player ai_pla
 }
 
 // Initialize node game-theoretic proof status from terminal state or tablebase probe
-static inline void mcts_init_node_proof(MCTSNode *node, const GameState *parent_state, const GameState *child_state, bool use_db) {
+static inline void mcts_init_node_proof(MCTSNode *node, const CompactState *parent_state, const CompactState *child_state, bool use_db) {
     node->proof_status = MCTS_PROOF_UNKNOWN;
     node->proof_depth = 0;
 
@@ -270,23 +270,17 @@ static inline void mcts_init_node_proof(MCTSNode *node, const GameState *parent_
         return;
     }
 
-    if (use_db && (wld_is_endgame_state(child_state) || wld_db_is_endgame(&child_state->board))) {
-        WLDValue wld = wld_db_probe(child_state);
+    if (use_db && (wld_is_endgame_compact(child_state) || wld_db_is_endgame(&child_state->board))) {
+        WLDValue wld = wld_probe_compact(child_state);
         if (wld == WLD_WIN_WHITE) {
             node->visits = 1;
             node->wins = (parent_state->current_player == PLAYER_WHITE) ? 1.0f : 0.0f;
-            node->proof_status = (child_state->current_player == PLAYER_WHITE) ? MCTS_PROOF_WIN : MCTS_PROOF_LOSS;
-            node->proof_depth = 1;
         } else if (wld == WLD_WIN_BLACK) {
             node->visits = 1;
             node->wins = (parent_state->current_player == PLAYER_BLACK) ? 1.0f : 0.0f;
-            node->proof_status = (child_state->current_player == PLAYER_BLACK) ? MCTS_PROOF_WIN : MCTS_PROOF_LOSS;
-            node->proof_depth = 1;
         } else if (wld == WLD_DRAW) {
             node->visits = 1;
             node->wins = 0.5f;
-            node->proof_status = MCTS_PROOF_DRAW;
-            node->proof_depth = 1;
         }
     }
 }
@@ -359,17 +353,17 @@ static inline int sq_manhattan_dist(int sq1, int sq2) {
 
 
 // Expand node in UCB1 tree and assign proof status from terminal state or tablebase probe
-static bool ucb1_expand_node(uint32_t node_idx, const GameState *state, bool use_db, TranspositionTable *tt, uint16_t epoch, uint16_t depth) {
+static bool ucb1_expand_node(uint32_t node_idx, const CompactState *state, const SearchHistory *hist, bool use_db, TranspositionTable *tt, uint16_t epoch, uint16_t depth) {
     if (node_idx >= s_pool_tail) return false;
     if (s_node_pool[node_idx].first_child_idx != UINT32_MAX && s_node_pool[node_idx].first_child_idx < s_pool_tail) return true;
 
-    MoveList ml = *game_get_valid_moves(state);
-    s_node_pool[node_idx].num_children = ml.count;
-    s_node_pool[node_idx].unexpanded_idx = 0;
-
-    if (ml.count == 0) {
+    const MoveList *ml_ptr = compact_get_valid_moves(state);
+    if (!ml_ptr || ml_ptr->count == 0) {
         return false;
     }
+    MoveList ml = *ml_ptr;
+    s_node_pool[node_idx].num_children = ml.count;
+    s_node_pool[node_idx].unexpanded_idx = 0;
 
     if (s_pool_tail + ml.count > MCTS_MAX_NODES) {
         return false;
@@ -391,8 +385,12 @@ static bool ucb1_expand_node(uint32_t node_idx, const GameState *state, bool use
         s_node_pool[child_idx].proof_status = MCTS_PROOF_UNKNOWN;
         s_node_pool[child_idx].proof_depth = 0;
 
-        GameState child_state = *state;
-        game_execute_move(&child_state, ml.moves[i]);
+        CompactState child_state = *state;
+        compact_execute_move(&child_state, ml.moves[i]);
+        if (hist && compact_is_threefold_repetition(hist, child_state.hash)) {
+            child_state.is_game_over = true;
+            child_state.is_draw = true;
+        }
         s_node_pool[child_idx].hash = child_state.hash;
         mcts_init_node_proof(&s_node_pool[child_idx], state, &child_state, use_db);
 
@@ -514,13 +512,25 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
 
     tt_store(&st->tt, game->hash, st->root_idx, 0, st->search_epoch);
 
+    CompactState root_compact = compact_from_game(game);
+    int irr_plies = game_get_plies_since_irreversible(game);
+    SearchHistory search_hist;
+    search_hist.root_history_len = (uint16_t)irr_plies;
+    if (irr_plies > 0 && game->history_count > irr_plies) {
+        search_hist.root_history = &game->history[game->history_count - 1 - irr_plies];
+    } else {
+        search_hist.root_history = NULL;
+        search_hist.root_history_len = 0;
+    }
+    search_hist.path_len = 0;
+
     // Ensure root children are generated with tablebase proof status
     if (s_node_pool[st->root_idx].first_child_idx == UINT32_MAX) {
-        if (ucb1_expand_node(st->root_idx, game, st->use_db, &st->tt, st->search_epoch, 1)) {
+        if (ucb1_expand_node(st->root_idx, &root_compact, &search_hist, st->use_db, &st->tt, st->search_epoch, 1)) {
             // Root Tree Warm-Starting from Opening Book Metadata
             if (st->use_book) {
                 BookMoveList root_book_moves;
-                if (opening_book_probe(game, &root_book_moves) && root_book_moves.count > 0) {
+                if (opening_book_probe_compact(&root_compact, &root_book_moves) && root_book_moves.count > 0) {
                     uint32_t fc = s_node_pool[st->root_idx].first_child_idx;
                     uint8_t nc = s_node_pool[st->root_idx].num_children;
                     for (uint8_t i = 0; i < nc; i++) {
@@ -557,11 +567,6 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
     const double budget = st->time_budget;
 
     while (1) {
-        // If root node is already solved, terminate early
-        if (s_node_pool[st->root_idx].proof_status != MCTS_PROOF_UNKNOWN) {
-            break;
-        }
-
         // Non-blocking time and stop check strictly every 64 iterations
         if ((iterations & 63) == 0 && iterations > 0) {
             if (engine_is_stop_requested()) {
@@ -579,14 +584,12 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
         // 1. SELECTION
         int path_len = 0;
         uint32_t curr_idx = st->root_idx;
-        GameState curr_state = *game;
+        CompactState curr_state = root_compact;
+        search_hist.path_len = 0;
+        search_hist.path_hashes[search_hist.path_len++] = curr_state.hash;
         path_stack[path_len++] = curr_idx;
 
         while (node_is_fully_expanded(curr_idx) && !curr_state.is_game_over && path_len < MAX_TREE_DEPTH - 2) {
-            if (s_node_pool[curr_idx].proof_status != MCTS_PROOF_UNKNOWN) {
-                break;
-            }
-
             uint32_t fc = s_node_pool[curr_idx].first_child_idx;
             uint8_t nc = s_node_pool[curr_idx].num_children;
             if (nc == 0) break;
@@ -628,7 +631,14 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
                 }
             }
 
-            game_execute_move(&curr_state, s_node_pool[best_child].move);
+            compact_execute_move(&curr_state, s_node_pool[best_child].move);
+            if (compact_is_threefold_repetition(&search_hist, curr_state.hash)) {
+                curr_state.is_game_over = true;
+                curr_state.is_draw = true;
+            }
+            if (search_hist.path_len < 255) {
+                search_hist.path_hashes[search_hist.path_len++] = curr_state.hash;
+            }
             curr_idx = best_child;
             path_stack[path_len++] = curr_idx;
 
@@ -638,9 +648,9 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
 
         // 2. EXPANSION
         uint32_t sim_node = curr_idx;
-        if (!curr_state.is_game_over && s_node_pool[curr_idx].proof_status == MCTS_PROOF_UNKNOWN && path_len < MAX_TREE_DEPTH - 2) {
+        if (!curr_state.is_game_over && path_len < MAX_TREE_DEPTH - 2) {
             if (s_node_pool[curr_idx].first_child_idx == UINT32_MAX) {
-                ucb1_expand_node(curr_idx, &curr_state, st->use_db, &st->tt, st->search_epoch, (uint16_t)path_len);
+                ucb1_expand_node(curr_idx, &curr_state, &search_hist, st->use_db, &st->tt, st->search_epoch, (uint16_t)path_len);
             }
 
             if (s_node_pool[curr_idx].first_child_idx != UINT32_MAX &&
@@ -648,27 +658,42 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
                 uint32_t child_to_expand = s_node_pool[curr_idx].first_child_idx + s_node_pool[curr_idx].unexpanded_idx;
                 s_node_pool[curr_idx].unexpanded_idx++;
 
-                game_execute_move(&curr_state, s_node_pool[child_to_expand].move);
+                compact_execute_move(&curr_state, s_node_pool[child_to_expand].move);
+                if (compact_is_threefold_repetition(&search_hist, curr_state.hash)) {
+                    curr_state.is_game_over = true;
+                    curr_state.is_draw = true;
+                }
+                if (search_hist.path_len < 255) {
+                    search_hist.path_hashes[search_hist.path_len++] = curr_state.hash;
+                }
                 path_stack[path_len++] = child_to_expand;
                 sim_node = child_to_expand;
             }
         }
 
         // 3. SIMULATION (ROLLOUT - BIASED HEURISTIC POLICY)
-        GameState rollout_state = curr_state;
+        CompactState rollout_state = curr_state;
         int rollout_depth = 0;
         if (s_node_pool[sim_node].proof_status == MCTS_PROOF_UNKNOWN && !rollout_state.is_game_over) {
             int max_depth = st->max_rollout_depth;
             float eps = st->rollout_epsilon;
             while (!rollout_state.is_game_over && rollout_depth < max_depth) {
-                MoveList ml = *game_get_valid_moves(&rollout_state);
-                if (ml.count == 0) {
+                const MoveList *ml = compact_get_valid_moves(&rollout_state);
+                if (!ml || ml->count == 0) {
                     rollout_state.is_game_over = true;
                     rollout_state.winner = (rollout_state.current_player == PLAYER_WHITE) ? PLAYER_BLACK : PLAYER_WHITE;
                     break;
                 }
-                Move rm = mcts_select_biased_rollout_move(&rollout_state, &ml, eps, &st->rng_state);
-                game_execute_move(&rollout_state, rm);
+                Move rm = mcts_select_biased_rollout_move_compact(&rollout_state, ml, eps, &st->rng_state);
+                compact_execute_move(&rollout_state, rm);
+                if (compact_is_threefold_repetition(&search_hist, rollout_state.hash)) {
+                    rollout_state.is_game_over = true;
+                    rollout_state.is_draw = true;
+                    break;
+                }
+                if (search_hist.path_len < 255) {
+                    search_hist.path_hashes[search_hist.path_len++] = rollout_state.hash;
+                }
                 rollout_depth++;
             }
         }

@@ -1290,10 +1290,24 @@ Move engine_checkerboard_get_move(void *state, const GameState *game) {
         int opp_score = opp_men * 100 + opp_kings * 145;
 
         // Check if selected move triggers 3-fold repetition
-        GameState sim = *game;
+        CompactState root_compact = compact_from_game(game);
+        int irr_plies = game_get_plies_since_irreversible(game);
+        SearchHistory hist;
+        hist.root_history_len = (uint16_t)irr_plies;
+        if (irr_plies > 0 && game->history_count > irr_plies) {
+            hist.root_history = &game->history[game->history_count - 1 - irr_plies];
+        } else {
+            hist.root_history = NULL;
+            hist.root_history_len = 0;
+        }
+        hist.path_len = 0;
+
+        CompactState sim = root_compact;
         bool causes_draw = false;
-        if (game_execute_move(&sim, selected_m) && sim.is_draw) {
-            causes_draw = true;
+        if (compact_execute_move(&sim, selected_m)) {
+            if (sim.is_draw || compact_is_threefold_repetition(&hist, sim.hash)) {
+                causes_draw = true;
+            }
         }
 
         if (causes_draw && cb_score >= opp_score) {
@@ -1304,9 +1318,9 @@ Move engine_checkerboard_get_move(void *state, const GameState *game) {
                 Move alt = valid_moves->moves[i];
                 if (move_equals(alt, selected_m)) continue;
 
-                GameState alt_sim = *game;
-                if (!game_execute_move(&alt_sim, alt)) continue;
-                if (alt_sim.is_draw) continue; // Skip other moves that also draw
+                CompactState alt_sim = root_compact;
+                if (!compact_execute_move(&alt_sim, alt)) continue;
+                if (alt_sim.is_draw || compact_is_threefold_repetition(&hist, alt_sim.hash)) continue; // Skip other moves that also draw
 
                 int alt_wm = __builtin_popcount(alt_sim.board.white_men);
                 int alt_wk = __builtin_popcount(alt_sim.board.white_kings);

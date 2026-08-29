@@ -53,17 +53,24 @@ const char *wld_get_custom_path(void);
 // Unified Probing API
 WLDValue wld_probe_state(const GameState *game);
 bool wld_is_endgame_state(const GameState *game);
+WLDValue wld_probe_compact(const CompactState *state);
 
 // Legacy backwards-compatibility wrappers for existing engine modules
 void wld_db_init(void);
 WLDValue wld_db_probe(const GameState *game);
 
-static inline bool wld_db_is_endgame(const Board *b) {
-    int count = __builtin_popcount(b->white_men) + 
-                __builtin_popcount(b->white_kings) + 
-                __builtin_popcount(b->black_men) + 
-                __builtin_popcount(b->black_kings);
+static inline bool wld_db_is_endgame(const Board *board) {
+    if (!board) return false;
+    int count = __builtin_popcount(board->white_men) + 
+                __builtin_popcount(board->white_kings) + 
+                __builtin_popcount(board->black_men) + 
+                __builtin_popcount(board->black_kings);
     return count <= 8;
+}
+
+static inline bool wld_is_endgame_compact(const CompactState *state) {
+    if (!state) return false;
+    return wld_db_is_endgame(&state->board);
 }
 
 #ifdef __cplusplus

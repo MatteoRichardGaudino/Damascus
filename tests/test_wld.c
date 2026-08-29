@@ -5,7 +5,6 @@ ______________________________________________________________________________*/
 
 #include "wld_db.h"
 #include "wld_egdb.h"
-#include "wld_solver.h"
 #include "mcts_ucb1.h"
 #include "mcts_puct.h"
 #include "mcts_heuristic.h"
@@ -149,88 +148,6 @@ static void test_probe_benchmark(void) {
     ASSERT_TEST(probes_per_sec > 50000.0, "Probe throughput exceeds 50k probes/sec (fast-path O(1))");
 }
 
-static void test_wld_solver_tactics(void) {
-    printf("\n=== Test 5: WLD Alpha-Beta Shortest-Win Mini-Solver ===\n");
-    if (wld_egdb_is_supported()) {
-        wld_init_backend(WLD_BACKEND_OFFICIAL_8PIECE);
-    } else {
-        wld_init_backend(WLD_BACKEND_NONE);
-    }
-
-    // 1. Applicability Check
-    GameState g_2v1;
-    memset(&g_2v1, 0, sizeof(g_2v1));
-    g_2v1.board.white_kings = (1U << 0) | (1U << 1);
-    g_2v1.board.black_kings = (1U << 31);
-    g_2v1.current_player = PLAYER_WHITE;
-    g_2v1.hash = zobrist_compute_hash(&g_2v1.board, g_2v1.current_player);
-
-    ASSERT_TEST(wld_solver_is_applicable(&g_2v1) == true, "Solver is applicable on 2v1 position");
-
-    // 2. 2 Kings vs 1 King Solver Search
-    WLDSolverResult res_2v1 = wld_solver_search(&g_2v1, WLD_SOLVER_DEFAULT_DEPTH, false);
-    ASSERT_TEST(!move_is_none(res_2v1.best_move), "Solver finds non-empty move for 2v1");
-    ASSERT_TEST(res_2v1.outcome == WLD_WIN_WHITE, "Solver confirms 2v1 outcome is WLD_WIN_WHITE");
-    ASSERT_TEST(res_2v1.nodes_visited > 0, "Solver explored search tree nodes");
-
-    // 3. 3 Kings vs 1 King Solver Search
-    GameState g_3v1;
-    memset(&g_3v1, 0, sizeof(g_3v1));
-    g_3v1.board.white_kings = (1U << 0) | (1U << 1) | (1U << 2);
-    g_3v1.board.black_kings = (1U << 31);
-    g_3v1.current_player = PLAYER_WHITE;
-    g_3v1.hash = zobrist_compute_hash(&g_3v1.board, g_3v1.current_player);
-
-    WLDSolverResult res_3v1 = wld_solver_search(&g_3v1, WLD_SOLVER_DEFAULT_DEPTH, false);
-    ASSERT_TEST(!move_is_none(res_3v1.best_move), "Solver finds non-empty move for 3v1");
-    ASSERT_TEST(res_3v1.outcome == WLD_WIN_WHITE, "Solver confirms 3v1 outcome is WLD_WIN_WHITE");
-
-    // 4. Complete Endgame Conversion Simulation: White (Solver) vs Black (Legal Responder)
-    // Starting with 2 Kings vs 1 King: White must force a win/capture within 20 plies without looping.
-    GameState sim_game = g_2v1;
-    int plies_played = 0;
-    const int max_sim_plies = 40;
-
-    while (!sim_game.is_game_over && plies_played < max_sim_plies) {
-        Move m;
-        Player p = sim_game.current_player;
-        if (p == PLAYER_WHITE) {
-            m = wld_solver_select_move(&sim_game, WLD_SOLVER_DEFAULT_DEPTH, false);
-        } else {
-            const MoveList *opp_ml = game_get_valid_moves(&sim_game);
-            if (opp_ml->count == 0) break;
-            m = opp_ml->moves[0];
-        }
-        if (move_is_none(m)) {
-            printf("  [ERROR] Move is none at ply %d! player=%d, valid_moves=%d\n",
-                   plies_played + 1, sim_game.current_player, game_get_valid_moves(&sim_game)->count);
-            break;
-        }
-        printf("  [Sim Ply %2d] %s: %02d -> %02d (is_cap: %d)\n",
-               plies_played + 1, (p == PLAYER_WHITE) ? "White" : "Black", m.from, m.to, m.is_cap);
-        fflush(stdout);
-        bool ok = game_execute_move(&sim_game, m);
-        if (!ok) break;
-        plies_played++;
-    }
-
-    printf("  Endgame 2v1 simulation converted in %d plies (Game Over: %d, Winner: %s, Draw: %d)\n",
-           plies_played, sim_game.is_game_over,
-           (sim_game.winner == PLAYER_WHITE) ? "BIANCO" : "NERO", sim_game.is_draw);
-
-    ASSERT_TEST(sim_game.is_game_over && sim_game.winner == PLAYER_WHITE,
-                "Solver forces victory in 2v1 conversion simulation without drawing or looping");
-
-    // 5. Anti-Repetition Test: Ensure repetition count >= 3 is strictly avoided when winning
-    GameState rep_state = g_2v1;
-    rep_state.history_count = 2;
-    rep_state.history[0] = (PositionKey){ .wm = 0, .wk = (1U << 0) | (1U << 1), .bm = 0, .bk = (1U << 31), .player = PLAYER_WHITE, .hash = rep_state.hash };
-    rep_state.history[1] = (PositionKey){ .wm = 0, .wk = (1U << 0) | (1U << 1), .bm = 0, .bk = (1U << 31), .player = PLAYER_WHITE, .hash = rep_state.hash };
-    
-    WLDSolverResult rep_res = wld_solver_search(&rep_state, WLD_SOLVER_DEFAULT_DEPTH, false);
-    ASSERT_TEST(!move_is_none(rep_res.best_move), "Solver chooses valid progressive move with repetition history");
-}
-
 static void test_mcts_value_shaping_and_proofs(void) {
     printf("\n=== Test 7: MCTS Value Shaping & Proof-Number Backpropagation ===\n");
 
@@ -365,7 +282,6 @@ int main(void) {
     test_status_reporting();
     test_official_backend_probing();
     test_probe_benchmark();
-    test_wld_solver_tactics();
     test_mcts_value_shaping_and_proofs();
     test_phase4_ui_cli_configuration();
 

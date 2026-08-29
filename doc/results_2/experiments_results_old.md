@@ -242,29 +242,28 @@ To quantify the efficiency of low-level data structures, hardware intrinsics, an
 
 * **CLI Reproduction Command**:
   ```powershell
-  .\build\Release\Damascus.exe --bench --budget=0.2,1.0,3.0 --csv=doc/results_3/benchmark.csv
-  .\build\Release\Damascus.exe --bench-game --budget=0.2,1.0,3.0 --csv=doc/results_3/benchmark_game.csv
-  .\build\Release\Damascus.exe --test-endgames --csv=doc/results_3/benchmark_endgame.csv
-  .\build\Release\Damascus.exe --test-opening-book --csv=doc/results_3/benchmark_openings.csv
+  .\build\Release\Damascus.exe --bench --budget=0.2,1.0,3.0 --csv=doc/results_2/benchmark.csv
+  .\build\Release\Damascus.exe --test-endgames --csv=doc/results_2/benchmark_endgame.csv
+  .\build\Release\Damascus.exe --test-opening-book --csv=doc/results_2/benchmark_openings.csv
   ```
 
 ---
 
 ### 4.1 Move Generator & *Legge del Massimo* (Perft Throughput)
 
-The Perft benchmark measures raw combinatorial move generation and the performance of recursive multi-jump capture pruning conforming to the 4-tier *Legge del Massimo* rules, running on lightweight `CompactState` structures.
+The Perft benchmark measures raw combinatorial move generation and the performance of recursive multi-jump capture pruning conforming to the 4-tier *Legge del Massimo* rules.
 
 | Depth | Generated Positions (Nodes) | Execution Time | Generation Throughput |
 |:---:|:---:|:---:|:---:|
-| **$d = 1$** | $7$ | $< 0.001\text{s}$ | **$1,060.61\text{ kN/s}$** |
-| **$d = 2$** | $49$ | $< 0.001\text{s}$ | **$30,625.01\text{ kN/s}$** |
-| **$d = 3$** | $353$ | $< 0.001\text{s}$ | **$76,739.12\text{ kN/s}$** |
-| **$d = 4$** | $15$ (forced captures) | $< 0.001\text{s}$ | **$5,555.55\text{ kN/s}$** |
-| **$d = 5$** | $69$ | $< 0.001\text{s}$ | **$40,588.27\text{ kN/s}$** |
-| **$d = 6$** | $90$ | $< 0.001\text{s}$ | **$40,909.08\text{ kN/s}$** |
-| **$d = 7$** | $98$ | $< 0.001\text{s}$ | **$40,833.33\text{ kN/s}$** |
+| **$d = 1$** | $7$ | $< 0.001\text{s}$ | **$2,800.00\text{ kN/s}$** |
+| **$d = 2$** | $49$ | $< 0.001\text{s}$ | **$11,395.35\text{ kN/s}$** |
+| **$d = 3$** | $353$ | $< 0.001\text{s}$ | **$29,663.87\text{ kN/s}$** |
+| **$d = 4$** | $15$ (forced captures) | $< 0.001\text{s}$ | **$4,687.50\text{ kN/s}$** |
+| **$d = 5$** | $69$ | $< 0.001\text{s}$ | **$15,000.00\text{ kN/s}$** |
+| **$d = 6$** | $90$ | $< 0.001\text{s}$ | **$8,108.11\text{ kN/s}$** |
+| **$d = 7$** | $98$ | $< 0.001\text{s}$ | **$7,153.28\text{ kN/s}$** |
 
-* **Peak Move Generation Speed**: Exceeds **$76.73\text{ million positions/sec}$**, proving the extreme efficiency of the 128-bit bitboard representations paired with 32-byte `CompactState` zero-allocation memory traversal.
+* **Peak Move Generation Speed**: Exceeds **$29.66\text{ million positions/sec}$**, proving the effectiveness of 128-bit bitboard representations and precomputed geometric lookup tables.
 
 ---
 
@@ -274,10 +273,10 @@ To evaluate the computational cost of the $\epsilon$-greedy domain heuristic dur
 
 | Rollout Policy | Exploration $\epsilon$ | Simulations Completed | Total Time | Simulation Speed |
 |:---|:---:|:---:|:---:|:---:|
-| **Biased Domain Rollout** (`mcts_heuristic.h`) | $\epsilon = 0.15$ | $25,000$ | $0.3073\text{s}$ | **$81,340.0\text{ sims/s}$** |
-| **Uniform Random Rollout** (Pure PRNG) | $\epsilon = 1.00$ | $25,000$ | $0.2851\text{s}$ | **$87,679.8\text{ sims/s}$** |
+| **Biased Domain Rollout** (`mcts_heuristic.h`) | $\epsilon = 0.15$ | $25,000$ | $0.3034\text{s}$ | **$82,412.6\text{ sims/s}$** |
+| **Uniform Random Rollout** (Pure PRNG) | $\epsilon = 1.00$ | $25,000$ | $0.2846\text{s}$ | **$87,848.4\text{ sims/s}$** |
 
-* **Algorithmic Takeaway**: The domain-specific heuristic evaluation function incurs only a negligible **$7.2\%$ computational overhead** compared to a raw random playout, while providing critical tactical guidance (king capture priority, promotions, baseline protection).
+* **Algorithmic Takeaway**: The domain-specific heuristic evaluation function incurs only a negligible **$6.2\%$ computational overhead** compared to a raw random playout, while providing critical tactical guidance (king capture priority, promotions, baseline protection).
 
 ---
 
@@ -291,16 +290,16 @@ For each time budget ($0.20\text{s}$, $1.00\text{s}$, $3.00\text{s}$), the itera
 
 | Search Engine | Time Budget | Opening Throughput (10 pos) | Midgame Throughput (10 pos) | Endgame Throughput (10 pos) | Overall Mean Throughput | Total 30-Pos Visits |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **MCTS UCB1** | $0.20\text{s}$ | **$124,928.0\text{ iter/s}$** | **$136,256.0\text{ iter/s}$** | **$379,760.0\text{ iter/s}$** | **$213,648.0\text{ iter/s}$** | $1,281,888$ |
-| **MCTS PUCT** | $0.20\text{s}$ | **$100,864.0\text{ iter/s}$** | **$102,912.0\text{ iter/s}$** | **$249,535.0\text{ iter/s}$** | **$151,103.7\text{ iter/s}$** | $906,622$ |
-| **MCTS UCB1** | $1.00\text{s}$ | **$123,046.4\text{ iter/s}$** | **$134,841.6\text{ iter/s}$** | **$302,868.8\text{ iter/s}$** | **$186,918.9\text{ iter/s}$** | $5,607,568$ |
-| **MCTS PUCT** | $1.00\text{s}$ | **$100,096.0\text{ iter/s}$** | **$100,403.2\text{ iter/s}$** | **$185,095.3\text{ iter/s}$** | **$128,531.5\text{ iter/s}$** | $3,855,945$ |
-| **MCTS UCB1** | $3.00\text{s}$ | **$123,748.3\text{ iter/s}$** | **$134,758.4\text{ iter/s}$** | **$243,344.4\text{ iter/s}$** | **$167,283.7\text{ iter/s}$** | $15,055,533$ |
-| **MCTS PUCT** | $3.00\text{s}$ | **$98,474.7\text{ iter/s}$** | **$75,383.5\text{ iter/s}$** | **$81,575.2\text{ iter/s}$** | **$85,144.4\text{ iter/s}$** | $7,662,999$ |
+| **MCTS UCB1** | $0.20\text{s}$ | **$70,912.0\text{ iter/s}$** | **$76,672.0\text{ iter/s}$** | **$211,084.0\text{ iter/s}$** | **$119,556.0\text{ iter/s}$** | $717,336$ |
+| **MCTS PUCT** | $0.20\text{s}$ | **$57,600.0\text{ iter/s}$** | **$59,648.0\text{ iter/s}$** | **$126,128.0\text{ iter/s}$** | **$81,125.3\text{ iter/s}$** | $486,752$ |
+| **MCTS UCB1** | $1.00\text{s}$ | **$70,950.4\text{ iter/s}$** | **$77,094.4\text{ iter/s}$** | **$182,234.4\text{ iter/s}$** | **$110,093.1\text{ iter/s}$** | $3,302,792$ |
+| **MCTS PUCT** | $1.00\text{s}$ | **$57,856.0\text{ iter/s}$** | **$58,060.8\text{ iter/s}$** | **$102,305.8\text{ iter/s}$** | **$72,740.9\text{ iter/s}$** | $2,182,226$ |
+| **MCTS UCB1** | $3.00\text{s}$ | **$71,289.6\text{ iter/s}$** | **$76,821.3\text{ iter/s}$** | **$167,218.1\text{ iter/s}$** | **$105,109.7\text{ iter/s}$** | $9,459,871$ |
+| **MCTS PUCT** | $3.00\text{s}$ | **$57,497.6\text{ iter/s}$** | **$57,804.8\text{ iter/s}$** | **$74,438.2\text{ iter/s}$** | **$63,246.9\text{ iter/s}$** | $5,692,218$ |
 
 * **Key Analytical Observations**:
-  1. **Phase Dynamics**: In opening and midgame positions, where branching factors and piece density are high, UCB1 achieves $\approx 123\text{k - }136\text{k iter/s}$ (up from $71\text{k - }77\text{k}$) and PUCT achieves $\approx 75\text{k - }103\text{k iter/s}$ (up from $58\text{k - }60\text{k}$). In endgames (2 to 6 pieces), simulation rollouts terminate rapidly, elevating throughput to over **$243\text{k - }380\text{k iter/s}$** for UCB1 and **$81\text{k - }250\text{k iter/s}$** for PUCT.
-  2. **Scalability Under Extended Search**: At $3.0\text{s}$ per move across all 30 positions, UCB1 accumulates **$15.06\text{ million node visits}$** (up from $9.46\text{M}$) and PUCT accumulates **$7.66\text{ million node visits}$** (up from $5.69\text{M}$), confirming that `CompactState` zero-allocation search significantly increases simulation density per second.
+  1. **Phase Dynamics**: In opening and midgame positions, where branching factors and piece density are high, UCB1 achieves $\approx 71\text{k - }77\text{k iter/s}$ and PUCT achieves $\approx 58\text{k - }60\text{k iter/s}$. In endgames (2 to 6 pieces), simulation rollouts terminate rapidly, elevating throughput to over **$167\text{k - }211\text{k iter/s}$** for UCB1 and **$74\text{k - }126\text{k iter/s}$** for PUCT.
+  2. **Scalability Under Extended Search**: At $3.0\text{s}$ per move across all 30 positions, UCB1 accumulates **$9.46\text{ million node visits}$** and PUCT accumulates **$5.69\text{ million node visits}$**, verifying that static node pools completely prevent dynamic heap allocator degradation.
   3. **Forced-Move Handling**: Positions containing a single mandatory capture under Italian FID rules execute immediately in $0\text{ ms}$, accurately reproducing live tournament conditions where trivial capture sequences require zero tree search overhead.
 
 ---
@@ -313,17 +312,17 @@ Both engines operated under default parameters with **Opening Book and Endgame T
 
 | Time Budget | Search Engine | Opening (iter/s) | Midgame (iter/s) | Endgame (iter/s) | Game Mean (iter/s) | Plies Distribution (O / M / E) |
 |:---:|:---|:---:|:---:|:---:|:---:|:---:|
-| **0.20s** | **MCTS PUCT** (White) | **$146,921.0\text{ iter/s}$** | **$303,107.1\text{ iter/s}$** | **$443,840.1\text{ iter/s}$** | **$357,256.0\text{ iter/s}$** | 8 / 27 / 27 plies |
-| **0.20s** | **MCTS UCB1** (Black) | **$180,477.7\text{ iter/s}$** | **$367,302.7\text{ iter/s}$** | **$570,706.6\text{ iter/s}$** | **$450,971.2\text{ iter/s}$** | 8 / 26 / 27 plies |
-| **1.00s** | **MCTS PUCT** (White) | **$157,317.9\text{ iter/s}$** | **$222,427.4\text{ iter/s}$** | **$232,295.5\text{ iter/s}$** | **$220,673.3\text{ iter/s}$** | 8 / 19 / 37 plies |
-| **1.00s** | **MCTS UCB1** (Black) | **$186,923.9\text{ iter/s}$** | **$284,681.4\text{ iter/s}$** | **$315,509.2\text{ iter/s}$** | **$294,077.6\text{ iter/s}$** | 8 / 19 / 36 plies |
-| **3.00s** | **MCTS PUCT** (White) | **$138,887.3\text{ iter/s}$** | **$165,484.0\text{ iter/s}$** | **$222,173.2\text{ iter/s}$** | **$184,917.2\text{ iter/s}$** | 8 / 20 / 27 plies |
-| **3.00s** | **MCTS UCB1** (Black) | **$188,798.6\text{ iter/s}$** | **$295,589.5\text{ iter/s}$** | **$286,991.0\text{ iter/s}$** | **$277,722.6\text{ iter/s}$** | 8 / 20 / 26 plies |
+| **0.20s** | **MCTS PUCT** (White) | **$79,490.5\text{ iter/s}$** | **$139,865.3\text{ iter/s}$** | **$237,842.6\text{ iter/s}$** | **$210,382.3\text{ iter/s}$** | 8 / 22 / 70 plies |
+| **0.20s** | **MCTS UCB1** (Black) | **$101,729.3\text{ iter/s}$** | **$181,045.4\text{ iter/s}$** | **$276,020.4\text{ iter/s}$** | **$248,665.6\text{ iter/s}$** | 8 / 22 / 70 plies |
+| **1.00s** | **MCTS PUCT** (White) | **$86,775.5\text{ iter/s}$** | **$122,906.0\text{ iter/s}$** | **$117,612.5\text{ iter/s}$** | **$118,267.3\text{ iter/s}$** | 8 / 54 / 38 plies |
+| **1.00s** | **MCTS UCB1** (Black) | **$100,963.8\text{ iter/s}$** | **$157,854.5\text{ iter/s}$** | **$145,731.6\text{ iter/s}$** | **$149,623.0\text{ iter/s}$** | 8 / 53 / 39 plies |
+| **3.00s** | **MCTS PUCT** (White) | **$81,577.8\text{ iter/s}$** | **$100,749.8\text{ iter/s}$** | **$167,947.0\text{ iter/s}$** | **$102,661.1\text{ iter/s}$** | 8 / 43 / 10 plies |
+| **3.00s** | **MCTS UCB1** (Black) | **$106,836.9\text{ iter/s}$** | **$152,594.3\text{ iter/s}$** | **$276,600.1\text{ iter/s}$** | **$155,386.7\text{ iter/s}$** | 8 / 42 / 10 plies |
 
 * **Key Analytical Observations**:
-  1. **Progression Dynamics**: As the match transitions from dense opening boards (24 pieces) to tactical endgames ($\le 7$ pieces), simulation playout lengths drop substantially, elevating endgame throughput up to **$443\text{k - }570\text{k iter/s}$**.
-  2. **Engine Speed Comparison**: MCTS UCB1 demonstrates higher raw iteration rates ($\approx 180\text{k - }570\text{k iter/s}$) than PUCT ($\approx 138\text{k - }443\text{k iter/s}$) due to PUCT's prior policy weighting and dynamic exploration scaling over every expanded node.
-  3. **Data Logging**: Detailed per-ply statistics, piece counts, and move timings are persisted in `doc/results_3/benchmark_game.csv`.
+  1. **Progression Dynamics**: As the match transitions from dense opening boards (24 pieces) to tactical endgames ($\le 7$ pieces), simulation playout lengths drop substantially, dramatically increasing iteration throughput by **$2.5\times - 3.0\times$** in late-game phases.
+  2. **Engine Speed Comparison**: MCTS UCB1 demonstrates higher raw iteration rates ($\approx 100\text{k - }276\text{k iter/s}$) than PUCT ($\approx 80\text{k - }237\text{k iter/s}$) due to PUCT's prior policy weighting and dynamic exploration scaling over every expanded node.
+  3. **Data Logging**: Detailed per-ply statistics, piece counts, and move timings are persisted in `doc/results_2/benchmark_game.csv`.
 
 ---
 
@@ -347,7 +346,6 @@ The endgame tablebase solver was tested against canonical tactical positions usi
 
 The opening book subsystem was verified using the **Kingsrow Opening Database** (`kr_italian.odb`, $1,759,678$ unique positions and $2,023,629$ evaluated edges).
 
-* **Probing Throughput**: **$9,650,000\text{ probes/sec}$** ($1,000,000$ sequential hash table probes completed in $0.1037\text{s}$).
-* **Average Probing Latency**: **$103.7\text{ ns}$ per probe**.
+* **Probing Throughput**: **$9,784,735\text{ probes/sec}$** ($1,000,000$ sequential hash table probes completed in $0.1022\text{s}$).
+* **Average Probing Latency**: **$102.2\text{ ns}$ per probe**.
 * **Softmax Sampling Validation**: Verified $100\%$ deterministic and smooth probability distribution over candidate theoretical lines across $10,000$ sampling iterations at $\tau = 1.0$.
-* **Data Logging**: Exported to `doc/results_3/benchmark_openings.csv`.

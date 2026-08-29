@@ -59,6 +59,7 @@ const char *opening_book_get_custom_path(void);
 
 // Query API
 bool opening_book_probe(const GameState *game, BookMoveList *out_moves);
+bool opening_book_probe_compact(const CompactState *state, BookMoveList *out_moves);
 Move opening_book_select_move(const GameState *game, BookPlayMode mode, float temperature, uint32_t *rng_state);
 
 // Helpers / Converters

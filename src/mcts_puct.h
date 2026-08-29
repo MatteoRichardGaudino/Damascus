@@ -53,5 +53,6 @@ void engine_mcts_puct_get_stats(void *state, EngineStats *out_stats);
 
 // Fast domain heuristic function H(s, a)
 float puct_compute_heuristic(const GameState *state, Move move);
+float puct_compute_heuristic_compact(const CompactState *state, Move move);
 
 #endif // MCTS_PUCT_H

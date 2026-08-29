@@ -327,19 +327,19 @@ int wld_egdb_lookup_raw(EGDB_POSITION *pos, int color, int cl) {
 #endif
 }
 
-static WLDValue wld_egdb_probe_depth(const GameState *game, int depth) {
+static WLDValue wld_egdb_probe_depth_compact(const CompactState *state, int depth) {
 #ifdef _WIN32
-    if (!game || depth > 8) return WLD_UNKNOWN;
+    if (!state || depth > 8) return WLD_UNKNOWN;
     if (!s_is_ready || !s_egdb_handle || !s_egdb_handle->lookup) return WLD_UNKNOWN;
 
     // Direct game terminal check
-    if (game->is_game_over) {
-        if (game->is_draw) return WLD_DRAW;
-        if (game->winner == PLAYER_WHITE) return WLD_WIN_WHITE;
-        if (game->winner == PLAYER_BLACK) return WLD_WIN_BLACK;
+    if (state->is_game_over) {
+        if (state->is_draw) return WLD_DRAW;
+        if (state->winner == PLAYER_WHITE) return WLD_WIN_WHITE;
+        if (state->winner == PLAYER_BLACK) return WLD_WIN_BLACK;
     }
 
-    const Board *b = &game->board;
+    const Board *b = &state->board;
     uint32_t wm = b->white_men;
     uint32_t wk = b->white_kings;
     uint32_t bm = b->black_men;
@@ -353,30 +353,36 @@ static WLDValue wld_egdb_probe_depth(const GameState *game, int depth) {
     if (w_total + b_total > s_max_pieces) return WLD_UNKNOWN;
 
     // Check if player has moves
-    MoveList moves = *game_get_valid_moves(game);
-    if (moves.count == 0) {
-        return (game->current_player == PLAYER_WHITE) ? WLD_WIN_BLACK : WLD_WIN_WHITE;
+    const MoveList *moves = compact_get_valid_moves(state);
+    if (!moves || moves->count == 0) {
+        return (state->current_player == PLAYER_WHITE) ? WLD_WIN_BLACK : WLD_WIN_WHITE;
     }
 
     // In-flight capture resolution:
     // Endgame tablebases index quiescent states. If the position has legal forced jumps,
     // evaluate through minimax across legal capture branches.
-    if (MOVE_IS_CAP(moves.moves[0])) {
+    if (MOVE_IS_CAP(moves->moves[0])) {
         bool all_losses = true;
-        for (int i = 0; i < moves.count; i++) {
-            GameState next = *game;
-            game_execute_move(&next, moves.moves[i]);
-            WLDValue child_res = wld_egdb_probe_depth(&next, depth + 1);
-            if (game->current_player == PLAYER_WHITE) {
-                if (child_res == WLD_WIN_WHITE) return WLD_WIN_WHITE;
+        bool has_unknown = false;
+        for (int i = 0; i < moves->count; i++) {
+            CompactState next = *state;
+            compact_execute_move(&next, moves->moves[i]);
+            WLDValue child_res = wld_egdb_probe_depth_compact(&next, depth + 1);
+            if (state->current_player == PLAYER_WHITE) {
+                if (child_res == WLD_WIN_WHITE) return WLD_WIN_WHITE; // Found winning branch
+                if (child_res == WLD_UNKNOWN) has_unknown = true;
                 if (child_res != WLD_WIN_BLACK) all_losses = false;
             } else {
-                if (child_res == WLD_WIN_BLACK) return WLD_WIN_BLACK;
+                if (child_res == WLD_WIN_BLACK) return WLD_WIN_BLACK; // Found winning branch
+                if (child_res == WLD_UNKNOWN) has_unknown = true;
                 if (child_res != WLD_WIN_WHITE) all_losses = false;
             }
         }
         if (all_losses) {
-            return (game->current_player == PLAYER_WHITE) ? WLD_WIN_BLACK : WLD_WIN_WHITE;
+            return (state->current_player == PLAYER_WHITE) ? WLD_WIN_BLACK : WLD_WIN_WHITE;
+        }
+        if (has_unknown) {
+            return WLD_UNKNOWN; // Cannot mathematically prove DRAW if some branches are unknown!
         }
         return WLD_DRAW;
     }
@@ -398,7 +404,7 @@ static WLDValue wld_egdb_probe_depth(const GameState *game, int depth) {
     }
 
     // EGDB side to move: EGDB_BLACK = 0, EGDB_WHITE = 1
-    int color = (game->current_player == PLAYER_WHITE) ? 1 : 0;
+    int color = (state->current_player == PLAYER_WHITE) ? 1 : 0;
     int res = -1;
 
     if (s_egdb_cs_inited) {
@@ -420,21 +426,27 @@ static WLDValue wld_egdb_probe_depth(const GameState *game, int depth) {
     // Kingsrow EGDB return codes:
     // 1 = EGDB_WIN, 2 = EGDB_LOSS, 3 = EGDB_DRAW (relative to color to move)
     if (res == 1) { // WIN for player to move
-        return (game->current_player == PLAYER_WHITE) ? WLD_WIN_WHITE : WLD_WIN_BLACK;
+        return (state->current_player == PLAYER_WHITE) ? WLD_WIN_WHITE : WLD_WIN_BLACK;
     } else if (res == 2) { // LOSS for player to move
-        return (game->current_player == PLAYER_WHITE) ? WLD_WIN_BLACK : WLD_WIN_WHITE;
+        return (state->current_player == PLAYER_WHITE) ? WLD_WIN_BLACK : WLD_WIN_WHITE;
     } else if (res == 3) { // DRAW
         return WLD_DRAW;
     }
 
     return WLD_UNKNOWN;
 #else
-    (void)game;
+    (void)state;
     (void)depth;
     return WLD_UNKNOWN;
 #endif
 }
 
+WLDValue wld_egdb_probe_compact(const CompactState *state) {
+    return wld_egdb_probe_depth_compact(state, 0);
+}
+
 WLDValue wld_egdb_probe(const GameState *game) {
-    return wld_egdb_probe_depth(game, 0);
+    if (!game) return WLD_UNKNOWN;
+    CompactState cs = compact_from_game(game);
+    return wld_egdb_probe_depth_compact(&cs, 0);
 }

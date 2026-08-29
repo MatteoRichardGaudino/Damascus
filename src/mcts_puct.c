@@ -106,9 +106,13 @@ float puct_compute_heuristic(const GameState *state, Move move) {
     return mcts_compute_move_heuristic(state, move);
 }
 
+float puct_compute_heuristic_compact(const CompactState *state, Move move) {
+    return mcts_compute_move_heuristic_compact(state, move);
+}
+
 // Compute Softmax Prior Policy P(s, a) = exp(H(s, a) / tau) / sum(exp(H(s, b) / tau))
 // Blended with opening book distribution P_book(s, a) when use_book is active
-static void compute_priors(const GameState *state, const MoveList *moves, float tau, bool use_book, float *priors) {
+static void compute_priors(const CompactState *state, const MoveList *moves, float tau, bool use_book, float *priors) {
     if (moves->count == 0) return;
     if (moves->count == 1) {
         priors[0] = 1.0f;
@@ -121,7 +125,7 @@ static void compute_priors(const GameState *state, const MoveList *moves, float 
     float max_h = -1e9f;
 
     for (int i = 0; i < moves->count; i++) {
-        h_scores[i] = mcts_compute_move_heuristic(state, moves->moves[i]);
+        h_scores[i] = mcts_compute_move_heuristic_compact(state, moves->moves[i]);
         if (h_scores[i] > max_h) {
             max_h = h_scores[i];
         }
@@ -142,7 +146,7 @@ static void compute_priors(const GameState *state, const MoveList *moves, float 
     // Blend opening book distribution P_book(s, a) if book is enabled and state has entries
     if (use_book) {
         BookMoveList book_moves;
-        if (opening_book_probe(state, &book_moves) && book_moves.count > 0) {
+        if (opening_book_probe_compact(state, &book_moves) && book_moves.count > 0) {
             const float lambda_book = 0.75f; // AlphaGo style blending parameter
             float blended[48];
             float sum_blended = 0.0f;
@@ -295,8 +299,8 @@ static bool boards_equal(const Board *a, const Board *b) {
            (a->black_kings == b->black_kings);
 }
 
-// Rollout evaluation cutoff with heuristic material evaluation and depth discounting
-static float evaluate_rollout_terminal(const GameState *sim_state, Player ai_player, int total_depth) {
+/// Rollout evaluation cutoff with heuristic material evaluation and depth discounting
+static float evaluate_rollout_terminal(const CompactState *sim_state, Player ai_player, int total_depth) {
     if (sim_state->is_game_over) {
         return mcts_compute_depth_discounted_reward(
             !sim_state->is_draw && (sim_state->winner == ai_player),
@@ -324,7 +328,7 @@ static float evaluate_rollout_terminal(const GameState *sim_state, Player ai_pla
 }
 
 // Initialize node game-theoretic proof status from terminal state or tablebase probe
-static inline void mcts_init_puct_node_proof(PUCTNode *node, const GameState *parent_state, const GameState *child_state, bool use_db) {
+static inline void mcts_init_puct_node_proof(PUCTNode *node, const CompactState *parent_state, const CompactState *child_state, bool use_db) {
     node->proof_status = MCTS_PROOF_UNKNOWN;
     node->proof_depth = 0;
 
@@ -346,23 +350,17 @@ static inline void mcts_init_puct_node_proof(PUCTNode *node, const GameState *pa
         return;
     }
 
-    if (use_db && (wld_is_endgame_state(child_state) || wld_db_is_endgame(&child_state->board))) {
-        WLDValue wld = wld_db_probe(child_state);
+    if (use_db && (wld_is_endgame_compact(child_state) || wld_db_is_endgame(&child_state->board))) {
+        WLDValue wld = wld_probe_compact(child_state);
         if (wld == WLD_WIN_WHITE) {
             node->visits = 1;
             node->wins = (parent_state->current_player == PLAYER_WHITE) ? 1.0f : 0.0f;
-            node->proof_status = (child_state->current_player == PLAYER_WHITE) ? MCTS_PROOF_WIN : MCTS_PROOF_LOSS;
-            node->proof_depth = 1;
         } else if (wld == WLD_WIN_BLACK) {
             node->visits = 1;
             node->wins = (parent_state->current_player == PLAYER_BLACK) ? 1.0f : 0.0f;
-            node->proof_status = (child_state->current_player == PLAYER_BLACK) ? MCTS_PROOF_WIN : MCTS_PROOF_LOSS;
-            node->proof_depth = 1;
         } else if (wld == WLD_DRAW) {
             node->visits = 1;
             node->wins = 0.5f;
-            node->proof_status = MCTS_PROOF_DRAW;
-            node->proof_depth = 1;
         }
     }
 }
@@ -420,19 +418,38 @@ static inline void mcts_update_puct_proof_status(uint32_t node_idx) {
 }
 
 
-// Select best child using PUCT formula with proof-number awareness:
-static uint32_t puct_select_child(uint32_t parent_idx, float c_puct) {
-    if (parent_idx >= s_pool_tail) return UINT32_MAX;
-    uint32_t fc = s_node_pool[parent_idx].first_child_idx;
-    uint8_t nc = s_node_pool[parent_idx].num_children;
-    if (fc == UINT32_MAX || nc == 0 || fc + nc > s_pool_tail) return UINT32_MAX;
+// Select best child using AlphaZero PUCT formula:
+// UCB(s, a) = Q(s, a) + c_puct * P(s, a) * (sqrt(sum(N(s, b))) / (1 + N(s, a)))
+// Proof status overrides: Proven win moves have top priority, proven losses heavily penalized.
+static inline uint32_t puct_select_child(uint32_t node_idx, float c_puct) {
+    if (s_node_pool[node_idx].first_child_idx == UINT32_MAX) return UINT32_MAX;
 
+    uint32_t fc = s_node_pool[node_idx].first_child_idx;
+    uint8_t nc = s_node_pool[node_idx].num_children;
+    if (nc == 0) return UINT32_MAX;
+
+    // 1. Solver Proof Status Shortcuts: If there is a proven win (child proof_status == MCTS_PROOF_LOSS), select it
+    uint8_t min_win_depth = 255;
+    uint32_t best_win_child = UINT32_MAX;
+    for (uint8_t i = 0; i < nc; i++) {
+        uint32_t c_idx = fc + i;
+        if (s_node_pool[c_idx].proof_status == MCTS_PROOF_LOSS) {
+            if (s_node_pool[c_idx].proof_depth < min_win_depth) {
+                min_win_depth = s_node_pool[c_idx].proof_depth;
+                best_win_child = c_idx;
+            }
+        }
+    }
+    if (best_win_child != UINT32_MAX) {
+        return best_win_child;
+    }
+
+    // 2. Standard PUCT Selection
     uint32_t sum_n = 0;
     for (uint8_t i = 0; i < nc; i++) {
         sum_n += s_node_pool[fc + i].visits;
     }
-
-    float sqrt_sum = (sum_n > 0) ? sqrtf((float)sum_n) : 1.0f;
+    float sqrt_sum = sqrtf((float)sum_n);
 
     uint32_t best_child = fc;
     float best_val = -1e9f;
@@ -443,10 +460,8 @@ static uint32_t puct_select_child(uint32_t parent_idx, float c_puct) {
         float val;
 
         if (c_proof == MCTS_PROOF_LOSS) {
-            // Child is proven loss for opponent -> proven WIN for current player
             val = 10000.0f - (float)s_node_pool[c_idx].proof_depth;
         } else if (c_proof == MCTS_PROOF_WIN) {
-            // Child is proven win for opponent -> proven LOSS for current player
             val = -10000.0f + (float)s_node_pool[c_idx].proof_depth;
         } else {
             uint32_t n = s_node_pool[c_idx].visits;
@@ -466,17 +481,17 @@ static uint32_t puct_select_child(uint32_t parent_idx, float c_puct) {
 }
 
 // Expand node in PUCT tree and assign domain heuristic priors, opening book priors, and proof status
-static bool puct_expand_node(uint32_t node_idx, const GameState *state, float temperature, bool use_book, bool use_db, TranspositionTable *tt, uint16_t epoch, uint16_t depth) {
+static bool puct_expand_node(uint32_t node_idx, const CompactState *state, const SearchHistory *hist, float temperature, bool use_book, bool use_db, TranspositionTable *tt, uint16_t epoch, uint16_t depth) {
     if (node_idx >= s_pool_tail) return false;
     if (s_node_pool[node_idx].first_child_idx != UINT32_MAX && s_node_pool[node_idx].first_child_idx < s_pool_tail) return true;
 
-    MoveList ml = *game_get_valid_moves(state);
-    s_node_pool[node_idx].num_children = ml.count;
-    s_node_pool[node_idx].unexpanded_idx = 0;
-
-    if (ml.count == 0) {
+    const MoveList *ml_ptr = compact_get_valid_moves(state);
+    if (!ml_ptr || ml_ptr->count == 0) {
         return false;
     }
+    MoveList ml = *ml_ptr;
+    s_node_pool[node_idx].num_children = ml.count;
+    s_node_pool[node_idx].unexpanded_idx = 0;
 
     if (s_pool_tail + ml.count > PUCT_MAX_NODES) {
         return false;
@@ -502,8 +517,12 @@ static bool puct_expand_node(uint32_t node_idx, const GameState *state, float te
         s_node_pool[child_idx].proof_status = MCTS_PROOF_UNKNOWN;
         s_node_pool[child_idx].proof_depth = 0;
 
-        GameState child_state = *state;
-        game_execute_move(&child_state, ml.moves[i]);
+        CompactState child_state = *state;
+        compact_execute_move(&child_state, ml.moves[i]);
+        if (hist && compact_is_threefold_repetition(hist, child_state.hash)) {
+            child_state.is_game_over = true;
+            child_state.is_draw = true;
+        }
         s_node_pool[child_idx].hash = child_state.hash;
         mcts_init_puct_node_proof(&s_node_pool[child_idx], state, &child_state, use_db);
 
@@ -623,14 +642,26 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
 
     tt_store(&st->tt, game->hash, st->root_idx, 0, st->search_epoch);
 
+    CompactState root_compact = compact_from_game(game);
+    int irr_plies = game_get_plies_since_irreversible(game);
+    SearchHistory search_hist;
+    search_hist.root_history_len = (uint16_t)irr_plies;
+    if (irr_plies > 0 && game->history_count > irr_plies) {
+        search_hist.root_history = &game->history[game->history_count - 1 - irr_plies];
+    } else {
+        search_hist.root_history = NULL;
+        search_hist.root_history_len = 0;
+    }
+    search_hist.path_len = 0;
+
     // Ensure root children are generated with domain heuristic priors, book priors, and tablebase proof status
     if (s_node_pool[st->root_idx].first_child_idx == UINT32_MAX) {
-        puct_expand_node(st->root_idx, game, st->temperature, st->use_book, st->use_db, &st->tt, st->search_epoch, 1);
+        puct_expand_node(st->root_idx, &root_compact, &search_hist, st->temperature, st->use_book, st->use_db, &st->tt, st->search_epoch, 1);
 
         // Root Tree Warm-Starting from Opening Book Metadata
         if (st->use_book) {
             BookMoveList root_book_moves;
-            if (opening_book_probe(game, &root_book_moves) && root_book_moves.count > 0) {
+            if (opening_book_probe_compact(&root_compact, &root_book_moves) && root_book_moves.count > 0) {
                 uint32_t fc = s_node_pool[st->root_idx].first_child_idx;
                 uint8_t nc = s_node_pool[st->root_idx].num_children;
                 for (uint8_t i = 0; i < nc; i++) {
@@ -657,21 +688,16 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
         }
     }
 
-    // High-performance Anytime Search Loop with PUCT Policy
+    // High-performance Anytime Search Loop
     double start_time = puct_get_time();
     uint32_t iterations = 0;
     uint32_t path_stack[MAX_TREE_DEPTH];
 
     const float c_puct = st->c_puct;
-    const float temperature = st->temperature;
     const double budget = st->time_budget;
+    const float temperature = st->temperature;
 
     while (1) {
-        // If root node is already solved, terminate early
-        if (s_node_pool[st->root_idx].proof_status != MCTS_PROOF_UNKNOWN) {
-            break;
-        }
-
         if ((iterations & 511) == 0 && iterations > 0) {
             if (engine_is_stop_requested()) {
                 break;
@@ -688,38 +714,50 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
         // 1. SELECTION
         int path_len = 0;
         uint32_t curr_idx = st->root_idx;
-        GameState curr_state = *game;
+        CompactState curr_state = root_compact;
+        search_hist.path_len = 0;
+        search_hist.path_hashes[search_hist.path_len++] = curr_state.hash;
         path_stack[path_len++] = curr_idx;
 
         while (s_node_pool[curr_idx].first_child_idx != UINT32_MAX && !curr_state.is_game_over && path_len < MAX_TREE_DEPTH - 2) {
-            if (s_node_pool[curr_idx].proof_status != MCTS_PROOF_UNKNOWN) {
-                break;
-            }
-
             uint32_t best_child = puct_select_child(curr_idx, c_puct);
             if (best_child == UINT32_MAX) break;
 
-            game_execute_move(&curr_state, s_node_pool[best_child].move);
+            compact_execute_move(&curr_state, s_node_pool[best_child].move);
+            if (compact_is_threefold_repetition(&search_hist, curr_state.hash)) {
+                curr_state.is_game_over = true;
+                curr_state.is_draw = true;
+            }
+            if (search_hist.path_len < 255) {
+                search_hist.path_hashes[search_hist.path_len++] = curr_state.hash;
+            }
             path_stack[path_len++] = best_child;
             curr_idx = best_child;
 
             // Probe TT for statistics
             tt_probe(&st->tt, curr_state.hash);
 
-            // If an unvisited child or solved node is reached, stop selection and proceed to simulation
-            if (s_node_pool[curr_idx].visits == 0 || s_node_pool[curr_idx].proof_status != MCTS_PROOF_UNKNOWN) {
+            // If an unvisited child or true terminal node is reached, stop selection and proceed to expansion/simulation
+            if (s_node_pool[curr_idx].visits == 0 || curr_state.is_game_over) {
                 break;
             }
         }
 
-        // 2. EXPANSION (if reached node was previously visited, not expanded yet, and not proven)
-        if (!curr_state.is_game_over && s_node_pool[curr_idx].proof_status == MCTS_PROOF_UNKNOWN && path_len < MAX_TREE_DEPTH - 2) {
+        // 2. EXPANSION (if reached node was previously visited, not expanded yet, and not terminal)
+        if (!curr_state.is_game_over && path_len < MAX_TREE_DEPTH - 2) {
             if (s_node_pool[curr_idx].first_child_idx == UINT32_MAX) {
-                if (puct_expand_node(curr_idx, &curr_state, temperature, st->use_book, st->use_db, &st->tt, st->search_epoch, (uint16_t)path_len)) {
+                if (puct_expand_node(curr_idx, &curr_state, &search_hist, temperature, st->use_book, st->use_db, &st->tt, st->search_epoch, (uint16_t)path_len)) {
                     // Pick top child by PUCT/prior to step into
                     uint32_t best_child = puct_select_child(curr_idx, c_puct);
                     if (best_child != UINT32_MAX) {
-                        game_execute_move(&curr_state, s_node_pool[best_child].move);
+                        compact_execute_move(&curr_state, s_node_pool[best_child].move);
+                        if (compact_is_threefold_repetition(&search_hist, curr_state.hash)) {
+                            curr_state.is_game_over = true;
+                            curr_state.is_draw = true;
+                        }
+                        if (search_hist.path_len < 255) {
+                            search_hist.path_hashes[search_hist.path_len++] = curr_state.hash;
+                        }
                         path_stack[path_len++] = best_child;
                         curr_idx = best_child;
                     }
@@ -728,20 +766,28 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
         }
 
         // 3. SIMULATION (ROLLOUT - BIASED HEURISTIC POLICY)
-        GameState rollout_state = curr_state;
+        CompactState rollout_state = curr_state;
         int rollout_depth = 0;
         if (s_node_pool[curr_idx].proof_status == MCTS_PROOF_UNKNOWN && !rollout_state.is_game_over) {
             int max_depth = st->max_rollout_depth;
             float eps = st->rollout_epsilon;
             while (!rollout_state.is_game_over && rollout_depth < max_depth) {
-                MoveList ml = *game_get_valid_moves(&rollout_state);
-                if (ml.count == 0) {
+                const MoveList *ml = compact_get_valid_moves(&rollout_state);
+                if (!ml || ml->count == 0) {
                     rollout_state.is_game_over = true;
                     rollout_state.winner = (rollout_state.current_player == PLAYER_WHITE) ? PLAYER_BLACK : PLAYER_WHITE;
                     break;
                 }
-                Move rm = mcts_select_biased_rollout_move(&rollout_state, &ml, eps, &st->rng_state);
-                game_execute_move(&rollout_state, rm);
+                Move rm = mcts_select_biased_rollout_move_compact(&rollout_state, ml, eps, &st->rng_state);
+                compact_execute_move(&rollout_state, rm);
+                if (compact_is_threefold_repetition(&search_hist, rollout_state.hash)) {
+                    rollout_state.is_game_over = true;
+                    rollout_state.is_draw = true;
+                    break;
+                }
+                if (search_hist.path_len < 255) {
+                    search_hist.path_hashes[search_hist.path_len++] = rollout_state.hash;
+                }
                 rollout_depth++;
             }
         }

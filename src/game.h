@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <assert.h>
 
 #ifdef _MSC_VER
 #include <intrin.h>
@@ -153,6 +154,27 @@ typedef struct {
     PositionKey history[MAX_GAME_HISTORY];
 } GameState;
 
+// 32-byte Compact Board State for high-throughput search & rollouts (zero-allocation)
+typedef struct {
+    Board    board;          // 16 bytes: 4x 32-bit bitboards (offset 0..15)
+    uint8_t  current_player; // 1 byte (PLAYER_WHITE=0, PLAYER_BLACK=1) (offset 16)
+    bool     is_game_over;   // 1 byte (offset 17)
+    bool     is_draw;        // 1 byte (offset 18)
+    uint8_t  winner;         // 1 byte (offset 19)
+    uint32_t padding;        // 4 bytes explicit padding (offset 20..23, aligns hash to 8-byte boundary)
+    uint64_t hash;           // 8 bytes: 64-bit Zobrist hash (offset 24..31)
+} CompactState;
+
+static_assert(sizeof(CompactState) == 32, "CompactState must be exactly 32 bytes");
+
+// Search History context for in-place 3-fold repetition detection without history cloning
+typedef struct {
+    const PositionKey *root_history;     // Pointer to match history
+    int                root_history_len; // Number of plies in root history to check (since last irreversible move)
+    uint64_t           path_hashes[256]; // Stack of visited position hashes along current search branch
+    int                path_len;         // Current depth along search branch
+} SearchHistory;
+
 void game_init(GameState *game, GameMode mode, Player human_player, EngineType white_engine, EngineType black_engine);
 bool game_is_dark_tile(int row, int col);
 bool game_is_valid_coord(int row, int col);
@@ -161,12 +183,26 @@ bool game_is_valid_coord(int row, int col);
 PieceType board_get_piece_at(const Board *board, int sq);
 
 // Moves generation and execution
+const MoveList* board_get_valid_moves(const Board *board, Player player);
 const MoveList* game_get_valid_moves(const GameState *game);
 bool game_execute_move(GameState *game, Move move);
+
+// Compact State operations (High-performance Search / Rollouts)
+CompactState compact_from_game(const GameState *game);
+void compact_to_game(const CompactState *compact, GameState *game);
+static inline const MoveList* compact_get_valid_moves(const CompactState *state) {
+    if (!state || state->is_game_over) {
+        return board_get_valid_moves(NULL, PLAYER_WHITE);
+    }
+    return board_get_valid_moves(&state->board, (Player)state->current_player);
+}
+bool compact_execute_move(CompactState *state, Move move);
 
 // Draw and Repetition checkers
 int game_get_repetition_count(const GameState *game);
 bool game_is_threefold_repetition(const GameState *game);
+int game_get_plies_since_irreversible(const GameState *game);
+bool compact_is_threefold_repetition(const SearchHistory *hist, uint64_t hash);
 
 bool is_piece_white(PieceType piece);
 bool is_piece_black(PieceType piece);

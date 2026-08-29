@@ -105,19 +105,18 @@ To solve this, Damascus implements an **$\epsilon$-Greedy Biased Simulation Poli
 
 ### 4.1 Fast Domain Heuristic Evaluation Function $H(s, a)$
 
-During simulation rollouts, candidate moves are statically evaluated via `mcts_compute_move_heuristic(state, move)` in [`src/mcts_heuristic.h:41-110`](file:///c:/Users/Matte/CLionProjects/Damascus/src/mcts_heuristic.h#L41-L110). 
+During simulation rollouts, candidate moves are statically evaluated via `mcts_compute_board_move_heuristic(board, player, move)` / `mcts_compute_move_heuristic_compact(state, move)` in [`src/mcts_heuristic.h:41-110`](file:///c:/Users/Matte/CLionProjects/Damascus/src/mcts_heuristic.h#L41-L110). 
 
 ```c
-static inline float mcts_compute_move_heuristic(const GameState *state, Move move) {
-    if (move_is_none(move)) return 0.0f;
+static inline float mcts_compute_board_move_heuristic(const Board *board, Player player, Move move) {
+    if (move_is_none(move) || !board) return 0.0f;
 
-    Player player = state->current_player;
     float h = 0.0f;
 
     // 1. Capture Value: King capture (+3.0) vs Man capture (+1.5)
     if (move.is_cap) {
-        uint32_t opp_kings = (player == PLAYER_WHITE) ? state->board.black_kings : state->board.white_kings;
-        uint32_t opp_men   = (player == PLAYER_WHITE) ? state->board.black_men : state->board.white_men;
+        uint32_t opp_kings = (player == PLAYER_WHITE) ? board->black_kings : board->white_kings;
+        uint32_t opp_men   = (player == PLAYER_WHITE) ? board->black_men : board->white_men;
 
         if (move.jumps > 0) {
             for (int j = 0; j < move.jumps; j++) {
@@ -129,6 +128,17 @@ static inline float mcts_compute_move_heuristic(const GameState *state, Move mov
                     else                       h += 1.5f;
                 }
             }
+        } else if (move.cap_mask != 0) {
+            uint32_t mask = move.cap_mask;
+            while (mask) {
+                int cap_sq = __builtin_ctz(mask);
+                mask &= mask - 1;
+                uint32_t sq_bit = 1U << cap_sq;
+                if (opp_kings & sq_bit) h += 3.0f;
+                else                   h += 1.5f;
+            }
+        } else {
+            h += 1.5f;
         }
     }
 
@@ -179,10 +189,10 @@ static inline float mcts_compute_move_heuristic(const GameState *state, Move mov
 
 ### 4.2 $\epsilon$-Greedy Stochastic Action Selection Mechanism
 
-Action choice during simulation trajectories is handled by `mcts_select_biased_rollout_move()` in [`src/mcts_heuristic.h:117-171`](file:///c:/Users/Matte/CLionProjects/Damascus/src/mcts_heuristic.h#L117-L171):
+Action choice during simulation trajectories is handled by `mcts_select_biased_rollout_move_compact()` in [`src/mcts_heuristic.h:117-225`](file:///c:/Users/Matte/CLionProjects/Damascus/src/mcts_heuristic.h#L117-L225):
 
 ```c
-static inline Move mcts_select_biased_rollout_move(const GameState *state, const MoveList *ml, float epsilon, uint32_t *rng_state) {
+static inline Move mcts_select_biased_rollout_move_compact(const CompactState *state, const MoveList *ml, float epsilon, uint32_t *rng_state) {
     if (ml->count == 0) return MOVE_NONE;
     if (ml->count == 1) return ml->moves[0]; // Single forced move
 
@@ -208,7 +218,7 @@ static inline Move mcts_select_biased_rollout_move(const GameState *state, const
     uint8_t best_count = 0;
 
     for (uint8_t i = 0; i < ml->count; i++) {
-        float score = mcts_compute_move_heuristic(state, ml->moves[i]);
+        float score = mcts_compute_move_heuristic_compact(state, ml->moves[i]);
         if (score > best_score + 1e-4f) {
             best_score = score;
             best_indices[0] = i;
@@ -340,6 +350,39 @@ if (has_dama) {
 
 ---
 
+### 5.6 Lightweight 32-Byte `CompactState` for Zero-Allocation Stack Search
+
+While the full match and GUI container (`GameState`) occupies $\approx 16.5\text{ KB}$ due to full 512-ply history arrays and graphical piece lists, the inner MCTS engine search, rollouts, and Perft DFS operate exclusively on the **32-byte `CompactState`** defined in [`src/game.h`](file:///c:/Users/Matte/CLionProjects/Damascus/src/game.h):
+
+```c
+typedef struct {
+    Board    board;          // 16 bytes: 4x 32-bit bitboards (offset 0..15)
+    uint8_t  current_player; // 1 byte (PLAYER_WHITE or PLAYER_BLACK) (offset 16)
+    bool     is_game_over;   // 1 byte (offset 17)
+    bool     is_draw;        // 1 byte (offset 18)
+    uint8_t  winner;         // 1 byte (offset 19)
+    uint32_t padding;        // 4 bytes: explicit padding to align hash (offset 20..23)
+    uint64_t hash;           // 8 bytes: 64-bit Zobrist key (offset 24..31)
+} CompactState; // Exactly 32 bytes (half an L1 cache line)
+
+static_assert(sizeof(CompactState) == 32, "CompactState must be exactly 32 bytes");
+```
+
+#### Memory Layout, Padding & Alignment Analysis:
+1. **Explicit vs. Implicit Padding**:
+   - The `Board` struct occupies $16\text{ bytes}$ (offsets 0..15), followed by four 1-byte fields (`current_player`, `is_game_over`, `is_draw`, `winner`) at offsets 16..19.
+   - The subsequent `uint64_t hash` field requires natural **8-byte alignment** on modern 64-bit architectures (offset must be a multiple of 8).
+   - Without an explicit padding field, the compiler would automatically insert $4\text{ bytes}$ of implicit padding between offset 19 and offset 24.
+   - Providing an explicit `uint32_t padding;` guarantees a deterministic, portable struct layout, avoids hidden compiler padding discrepancies across different C compilers (MSVC, GCC, Clang), and ensures that memory copies and zeroing operations do not leave uninitialized padding bytes.
+   - Compile-time guarantees are enforced via `static_assert(sizeof(CompactState) == 32, "...")`.
+2. **Zero-Allocation Stack Search (vs. Heavyweight Copies)**:
+   - The MCTS search is **zero-allocation** (0 dynamic heap allocations throughout the search loop). 
+   - State transitions copy only **32 bytes on the stack / CPU registers** (`CompactState child_state = *state;`), reducing stack memory traffic from $16.5\text{ KB}$ down to $32\text{ bytes}$ ($99.8\%$ reduction).
+3. **Half Cache-Line Alignment**: Two full `CompactState` instances fit inside a single $64\text{-byte}$ CPU cache line, enabling hardware SIMD registers to clone and mutate search states in 1–2 CPU clock cycles.
+4. **Decoupled Move Generation**: `compact_get_valid_moves()` and `compact_execute_move()` bypass match history buffers and UI updates entirely.
+
+---
+
 ## 6. Static Node Pool & Dynamic Subtree Recycling
 
 During MCTS searches, an engine may evaluate hundreds of thousands of simulation trajectories per second. In a naive implementation, dynamic memory management (`malloc` / `free` per node) introduces memory fragmentation, lock contention in multi-threaded execution, and CPU cache thrashing.
@@ -468,9 +511,14 @@ if (entry->age < age || (entry->age == age && depth >= entry->depth)) {
 }
 ```
 
-### 7.4 Threefold Repetition & Cycle Detection
+### 7.4 Threefold Repetition & In-Place History Detection
 
-The official rules of Italian Checkers state that a game is drawn if the exact same position recurs three times with the same player to move. Damascus enforces this rule with zero computational overhead by scanning the Zobrist hash history:
+The official rules of Italian Checkers state that a game is drawn if the exact same position recurs three times with the same player to move (*Legge della triplice ripetizione*).
+
+Damascus implements two complementary mechanisms for repetition detection:
+
+#### 1. Full Match History Verification (`game_is_threefold_repetition`)
+In the top-level game controller, repetitions are verified by scanning the 64-bit Zobrist key history:
 
 ```c
 bool game_is_threefold_repetition(const GameState *game) {
@@ -482,6 +530,39 @@ bool game_is_threefold_repetition(const GameState *game) {
     return count >= 3;
 }
 ```
+
+#### 2. In-Place `SearchHistory` & Irreversible Move Window in MCTS
+During inner MCTS tree search and rollouts, copying full 512-ply history buffers would destroy search throughput. Damascus solves this via **`SearchHistory`** in [`src/game.h`](file:///c:/Users/Matte/CLionProjects/Damascus/src/game.h) and [`src/game.c`](file:///c:/Users/Matte/CLionProjects/Damascus/src/game.c):
+
+1. **Irreversible Move Window**: In draughts, any piece capture (`is_cap`) or pawn advance is mathematically irreversible. `game_get_plies_since_irreversible(game)` scans backward from the current ply to the most recent irreversible move, limiting the root history search window to only recent reversible moves (typically 0–20 plies).
+2. **Local Path Stack**: Along the active search path, visited Zobrist hashes are recorded on the thread-local stack in `path_hashes[256]` (a single 8-byte register write per depth).
+3. **In-Place Verification**: `compact_is_threefold_repetition(hist, candidate_hash)` scans the local branch path and the root slice window directly:
+
+```c
+typedef struct {
+    const PositionKey *root_history;    // Read-only pointer to match history
+    uint16_t           root_history_len;// Plies since last irreversible move
+    uint64_t           path_hashes[256];// Stack of hashes along current MCTS path/rollout
+    uint16_t           path_len;        // Current search depth
+} SearchHistory;
+
+bool compact_is_threefold_repetition(const SearchHistory *hist, uint64_t hash) {
+    int count = 1; // Current state
+    for (int i = 0; i < (int)hist->path_len; i++) {
+        if (hist->path_hashes[i] == hash) {
+            if (++count >= 3) return true;
+        }
+    }
+    for (int i = 0; i < (int)hist->root_history_len; i++) {
+        if (hist->root_history[i].hash == hash) {
+            if (++count >= 3) return true;
+        }
+    }
+    return false;
+}
+```
+
+When a threefold repetition is detected during selection, expansion, or simulation, the candidate state is immediately flagged as a terminal draw (`is_draw = true`, `MCTS_PROOF_DRAW`), preventing engines from inadvertently falling into perpetual loops.
 
 ### 7.5 Benefits Over Naive State Comparison
 
@@ -784,9 +865,12 @@ To guarantee that peak playing strength never regresses across evolutionary gene
 
 ## 11. Low-Level Benchmarking Suite & Subsystem Profiling Architecture
 
-To empirically validate performance optimizations, detect memory leaks, and measure search throughput across hardware architectures, Damascus embeds an automated **low-level benchmarking and profiling suite** accessible directly via headless CLI arguments (`--bench`, `--test-endgames`, `--test-opening-book`).
+To empirically validate performance optimizations, detect bottlenecks, and measure search throughput across hardware architectures, Damascus embeds an automated **low-level benchmarking and profiling suite** accessible directly via headless CLI arguments (`--bench`, `--bench-game`, `--test-endgames`, `--test-opening-book`).
 
-The benchmark suite is implemented in [`src/cli.c`](file:///c:/Users/Matte/CLionProjects/Damascus/src/cli.c) and is structured into five distinct diagnostic modules:
+> [!NOTE]
+> Detailed numerical results, throughput tables, and hardware execution reports are maintained in the dedicated experimental document: [`doc/experiments_results.md`](file:///c:/Users/Matte/CLionProjects/Damascus/doc/experiments_results.md).
+
+The benchmark suite is implemented in [`src/cli.c`](file:///c:/Users/Matte/CLionProjects/Damascus/src/cli.c) and is structured into six distinct diagnostic modules:
 
 ```
                           [ Damascus Benchmark Suite ]
@@ -801,25 +885,29 @@ The benchmark suite is implemented in [`src/cli.c`](file:///c:/Users/Matte/CLion
 
 ### 11.1 Phase 1: Move Generator & *Legge del Massimo* (Perft Throughput)
 
-The Performance Test (**Perft**) executes an exhaustive combinatorial Depth-First Search (DFS) from the initial board configuration $s_0$ across depths $d \in [1, 7]$:
+The Performance Test (**Perft**) executes an exhaustive combinatorial Depth-First Search (DFS) from the initial board configuration across depths $d \in [1, 7]$ using lightweight `CompactState` structures:
 
 ```c
-// In src/cli.c:1516-1524
-for (int depth = 1; depth <= 7; depth++) {
-    double t0 = cli_get_time();
-    uint64_t nodes = perft_dfs(&start_game, depth);
-    double elapsed = cli_get_time() - t0;
-    double knps = (elapsed > 0.0) ? ((double)nodes / elapsed) / 1000.0 : 0.0;
-    printf("  Depth %d: %12llu nodes in %7.3fs (%9.2f kN/s)\n",
-           depth, (unsigned long long)nodes, elapsed, knps);
-    if (elapsed > 2.0) break; // Keep benchmark quick
+static uint64_t perft_dfs_compact(const CompactState *state, int depth) {
+    if (depth == 0) return 1;
+    const MoveList *legal = compact_get_valid_moves(state);
+    if (!legal || legal->count == 0) return 0;
+    if (depth == 1) return legal->count;
+
+    uint64_t nodes = 0;
+    for (int i = 0; i < legal->count; i++) {
+        CompactState next = *state;
+        compact_execute_move(&next, legal->moves[i]);
+        nodes += perft_dfs_compact(&next, depth - 1);
+    }
+    return nodes;
 }
 ```
 
 #### What It Measures & Validates:
 1. **Raw Bitboard Speed**: Quantifies the efficiency of bitwise operations, SIMD register usage, and hardware intrinsics (`__builtin_ctz` / `_BitScanForward`).
 2. **FID Rule Compliance**: Because Italian Checkers enforces the strict 4-tier *Legge del Massimo*, every leaf node generated by `perft_dfs` verifies that mandatory multi-jump capture paths, King capture priorities, and earliest-king capture sequences are properly pruned and enumerated.
-3. **Throughput Metric**: Reports generation speed in **kilo-nodes per second ($kN/s$)**, reaching up to **$29,663\text{ kN/s}$** ($29.66\text{ million states/sec}$).
+3. **Throughput Metric**: Reports generation speed in **kilo-nodes per second ($kN/s$)**.
 
 ---
 
@@ -828,37 +916,36 @@ for (int depth = 1; depth <= 7; depth++) {
 This module executes **$25,000$ complete game simulations** (capped at a maximum horizon of 70 plies each) to compare the computational throughput of the $\epsilon$-greedy domain heuristic against raw PRNG playouts:
 
 ```c
-// In src/cli.c:1532-1549: Biased Rollout with Domain Heuristics
+// In src/cli.c: Biased Rollout with Domain Heuristics
 int rollout_trials = 25000;
 double t_biased_0 = cli_get_time();
 uint32_t rng_state = 0x12345678U;
 for (int i = 0; i < rollout_trials; i++) {
-    GameState sim = start_game;
+    CompactState sim = start_state;
     int d = 0;
     while (!sim.is_game_over && d < 70) {
-        const MoveList *moves = game_get_valid_moves(&sim);
+        const MoveList *moves = compact_get_valid_moves(&sim);
         if (!moves || moves->count == 0) break;
-        Move best_m = mcts_select_biased_rollout_move(&sim, moves, 0.15f, &rng_state);
-        game_execute_move(&sim, best_m);
+        Move best_m = mcts_select_biased_rollout_move_compact(&sim, moves, 0.15f, &rng_state);
+        compact_execute_move(&sim, best_m);
         d++;
     }
 }
 double t_biased = cli_get_time() - t_biased_0;
 
-// In src/cli.c:1551-1568: Uniform Random Rollout
+// In src/cli.c: Uniform Random Rollout
 double t_rand_0 = cli_get_time();
 for (int i = 0; i < rollout_trials; i++) {
-    GameState sim = start_game;
+    CompactState sim = start_state;
     int d = 0;
     while (!sim.is_game_over && d < 70) {
-        const MoveList *moves = game_get_valid_moves(&sim);
+        const MoveList *moves = compact_get_valid_moves(&sim);
         if (!moves || moves->count == 0) break;
-        // Raw XorShift32 uniform selection
         rng_state ^= rng_state << 13;
         rng_state ^= rng_state >> 17;
         rng_state ^= rng_state << 5;
         int r_idx = (int)(rng_state % moves->count);
-        game_execute_move(&sim, moves->moves[r_idx]);
+        compact_execute_move(&sim, moves->moves[r_idx]);
         d++;
     }
 }
@@ -867,7 +954,7 @@ double t_rand = cli_get_time() - t_rand_0;
 
 #### What It Measures & Validates:
 1. **Heuristic Overhead Quantification**: Measures the exact runtime difference between evaluating domain features ($H(s, a)$ capturing kings $+3.0$, men $+1.5$, promotions $+2.0$, king mobility $+0.5$, row deltas $+0.2$, baseline defense $-0.3$) versus raw random modulo index extraction.
-2. **Throughput Result**: The biased rollout completes $25,000$ full games in $0.303\text{s}$ (**$82,412.6\text{ sims/s}$**) compared to $0.284\text{s}$ (**$87,848.4\text{ sims/s}$**) for uniform random rollouts. This demonstrates that Damascus's inline bitboard heuristic incurs only a negligible **$6.2\%$ computational cost**, providing massive tactical accuracy with virtually zero performance penalty.
+2. **Playout Efficiency**: Validates that inline bitboard heuristic evaluation incurs minimal overhead relative to raw random moves while injecting tactical guidance.
 
 ---
 
@@ -881,7 +968,7 @@ Rather than evaluating search throughput solely from the static opening position
 During this benchmark, the **Opening Book** and **Endgame Tablebases (WLD)** are strictly turned **OFF** (`mcts_use_book = false`, `puct_use_book = false`, `mcts_use_db = false`, `puct_use_db = false`) to enforce pure, unassisted MCTS tree search across all positions.
 
 ```c
-// In src/cli.c:1570-1620
+// In src/cli.c
 for (int b = 0; b < cfg->bench_budget_count; b++) {
     double budget = cfg->bench_budgets[b];
 
@@ -929,23 +1016,20 @@ for (int b = 0; b < cfg->bench_budget_count; b++) {
 ```
 
 #### What It Measures & Phase Dynamics:
-1. **Phase-Specific Throughput Variation**:
-   - **Openings ($24 - 20\text{ pieces}$)**: Both engines achieve $\approx 71\text{k iter/s}$ (UCB1) and $\approx 58\text{k iter/s}$ (PUCT).
-   - **Midgame ($18 - 10\text{ pieces}$)**: Throughput remains robust at $\approx 77\text{k iter/s}$ (UCB1) and $\approx 58\text{k - }60\text{k iter/s}$ (PUCT).
-   - **Endgames ($6 - 2\text{ pieces}$)**: Due to reduced piece density, simulation trajectories reach terminal states much faster, boosting throughput to over **$167\text{k - }211\text{k iter/s}$** for UCB1 and **$74\text{k - }126\text{k iter/s}$** for PUCT.
-2. **Overall Mean Scalability**: Across all 30 positions, UCB1 averages **$105\text{k - }120\text{k iter/s}$** and PUCT averages **$63\text{k - }81\text{k iter/s}$**, demonstrating consistent anytime search throughput and zero allocation stalls across the entire spectrum of game complexities.
-3. **Handling of Mandatory Captures**: Positions with a single forced capture under FID rules return immediately ($0\text{ ms}$), reflecting realistic game tree behavior where forced lines require zero search overhead.
+1. **Phase-Specific Throughput Variation**: Evaluates how branching factor and piece density affect iteration speed between dense openings, tactical midgames, and fast-resolving endgames.
+2. **Scalability & Node Pool Stability**: Demonstrates consistent anytime search throughput and zero allocation stalls across extended time controls.
+3. **Handling of Mandatory Captures**: Verifies that positions with a single forced capture under FID rules return immediately ($0\text{ ms}$) without unnecessary tree search overhead.
 
 ---
 
 ### 11.4 Phase 4: Full-Game Live Match Throughput Profiling (`--bench-game`)
 
-To evaluate the exact real-world throughput progression during an unassisted, continuous game, Damascus features the `--bench-game` diagnostic module. This mode plays a **full game between MCTS PUCT (White) and MCTS UCB1 (Black)** under sequential single-threaded execution for each time budget ($0.20\text{s}$, $1.00\text{s}$, $3.00\text{s}$).
+To evaluate real-world throughput progression during an unassisted, continuous game, the `--bench-game` diagnostic module plays a **full game between MCTS PUCT (White) and MCTS UCB1 (Black)** under sequential single-threaded execution for each time budget ($0.20\text{s}$, $1.00\text{s}$, $3.00\text{s}$).
 
 Both engines operate under default parameters with **Opening Book and Endgame Tablebases strictly disabled** (`use_book = false`, `use_db = false`), ensuring that every ply reflects pure MCTS search across the game tree.
 
 ```c
-// In src/cli.c:1810-1880
+// In src/cli.c
 while (!game.is_game_over && ply < 200) {
     Player cur_p = game.current_player;
     bool is_puct = (cur_p == PLAYER_WHITE);
@@ -971,12 +1055,8 @@ while (!game.is_game_over && ply < 200) {
 ```
 
 #### What It Measures & Dynamic Game Behavior:
-1. **Dynamic Piece Depletion**: Tracks how search throughput naturally accelerates as pieces are captured and removed from the board (from $24$ down to $\le 6$ pieces), reducing the simulation rollout depth from $70$ plies down to $5 - 10$ plies.
-2. **Single-Threaded Precision**: Eliminates thread contention, context switching, and cache eviction noise to provide exact baseline throughput measurements across all game plies.
-3. **Engine Throughput Comparison in Real Play**:
-   - In Openings ($24 \to 20$ pieces): PUCT achieves $\approx 79\text{k - }86\text{k iter/s}$ and UCB1 achieves $\approx 101\text{k - }106\text{k iter/s}$.
-   - In Midgame ($19 \to 8$ pieces): PUCT achieves $\approx 100\text{k - }140\text{k iter/s}$ and UCB1 achieves $\approx 152\text{k - }181\text{k iter/s}$.
-   - In Endgames ($\le 7$ pieces): Throughput surges up to **$237\text{k iter/s}$** for PUCT and **$276\text{k iter/s}$** for UCB1 due to ultra-short terminal playouts.
+1. **Dynamic Piece Depletion**: Tracks how search throughput naturally accelerates as pieces are captured and removed from the board, reducing the simulation rollout depth.
+2. **Single-Threaded Baseline**: Eliminates thread contention, context switching, and cache eviction noise to provide exact baseline throughput measurements across all game plies.
 
 ---
 
@@ -985,7 +1065,7 @@ while (!game.is_game_over && ply < 200) {
 The endgame benchmark in `run_test_endgames_mode()` verifies the retrograde analysis subsystem and 8-piece WLD driver integration (`egdb64.dll` across 90 slices) against canonical tactical endgame positions:
 
 ```c
-// In src/cli.c:1745-1752
+// In src/cli.c
 double t0 = cli_get_time();
 WLDSolverResult res = wld_solver_search(&sc->state, WLD_SOLVER_DEFAULT_DEPTH, false);
 double solve_time = cli_get_time() - t0;
@@ -995,16 +1075,16 @@ double solve_ms = solve_time * 1000.0;
 #### Verification Protocols:
 1. **Game-Theoretic Accuracy**: Verifies that solved outcomes match mathematical ground truth (`WIN_WHITE`, `WIN_BLACK`, `DRAW`) for key theoretical endgames ($2\text{K vs }1\text{K}$, $3\text{K vs }1\text{K}$, $2\text{K vs }2\text{K}$, $\text{K}+\text{M vs }\text{K}$, $1\text{K vs }1\text{K}$).
 2. **Conversion Playthrough Simulation**: If `sc->test_conversion` is active, the engine plays out the winning side against a Minimax defender to verify that the theoretical win is fully converted within 40 plies without cyclic repetitions.
-3. **Sub-Millisecond Query Latency**: Measures the total latency per query, confirming that tablebase lookups resolve in **$0.00 - 1.38\text{ ms}$** per position.
+3. **Query Latency**: Measures the total resolution latency per position.
 
 ---
 
 ### 11.6 Phase 6: Opening Book Throughput & Softmax Sampling Verification (`--test-opening-book`)
 
-This module benchmarks the high-speed binary probing and stochastic line selection of the **Kingsrow Opening Database** (`kr_italian.odb`, $1.76\text{M}$ positions, $2.02\text{M}$ moves):
+This module benchmarks binary probing and stochastic line selection of the **Kingsrow Opening Database** (`kr_italian.odb`, $1.76\text{M}$ positions, $2.02\text{M}$ moves):
 
 ```c
-// In src/cli.c:1993-2004: 1,000,000 Hash Table Probes
+// In src/cli.c: 1,000,000 Hash Table Probes
 const int total_bench_probes = 1000000;
 BookMoveList bench_list;
 double t0_bench = cli_get_time();
@@ -1019,5 +1099,5 @@ double avg_latency_ns = (t_elapsed / (double)total_bench_probes) * 1e9;
 ```
 
 #### What It Measures & Validates:
-1. **Hash Table Throughput**: Executes $1,000,000$ consecutive 64-bit Zobrist key probes into the packed in-memory opening database, measuring **$9.78\text{ million probes/second}$** with an average latency of **$102.2\text{ nanoseconds}$ per probe**.
-2. **Softmax Temperature Distribution**: Tests $10,000$ consecutive sampling iterations under `BOOK_MODE_GOOD` at $\tau = 1.0$, verifying that candidate theoretical moves are sampled smoothly and deterministically according to their centipawn evaluation scores.
+1. **Hash Table Probing Speed**: Executes $1,000,000$ consecutive 64-bit Zobrist key probes into the packed in-memory opening database, reporting probe throughput and nanosecond-level average latency.
+2. **Softmax Temperature Distribution**: Tests consecutive sampling iterations under `BOOK_MODE_GOOD` to verify smooth and deterministic probability distributions over candidate theoretical moves according to centipawn evaluation scores.

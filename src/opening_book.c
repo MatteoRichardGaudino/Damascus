@@ -701,3 +701,10 @@ Move opening_book_select_move(const GameState *game, BookPlayMode mode, float te
 
     return moves.entries[selected].move;
 }
+
+bool opening_book_probe_compact(const CompactState *state, BookMoveList *out_moves) {
+    if (!state || !out_moves) return false;
+    GameState temp;
+    compact_to_game(state, &temp);
+    return opening_book_probe(&temp, out_moves);
+}

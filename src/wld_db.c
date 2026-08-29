@@ -145,6 +145,11 @@ WLDValue wld_probe_state(const GameState *game) {
     return wld_egdb_probe(game);
 }
 
+WLDValue wld_probe_compact(const CompactState *state) {
+    if (!state || s_active_backend != WLD_BACKEND_OFFICIAL_8PIECE) return WLD_UNKNOWN;
+    return wld_egdb_probe_compact(state);
+}
+
 bool wld_is_endgame_state(const GameState *game) {
     if (!game || s_active_backend != WLD_BACKEND_OFFICIAL_8PIECE) return false;
     int count = __builtin_popcount(game->board.white_men) +

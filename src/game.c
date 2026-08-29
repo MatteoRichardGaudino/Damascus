@@ -352,13 +352,11 @@ static void dfs_black_king_capture(int start_sq, int curr_sq, uint32_t cap_mask,
     }
 }
 
-const MoveList* game_get_valid_moves(const GameState *game) {
+const MoveList* board_get_valid_moves(const Board *b, Player player) {
     init_tables();
     g_move_list.count = 0;
-    if (!game || game->is_game_over) return &g_move_list;
+    if (!b) return &g_move_list;
 
-    const Board *b = &game->board;
-    Player player = game->current_player;
     uint32_t occ = BOARD_OCCUPIED(*b);
     uint32_t free_mask = ~occ;
 
@@ -609,6 +607,182 @@ const MoveList* game_get_valid_moves(const GameState *game) {
     return &g_move_list;
 }
 
+const MoveList* game_get_valid_moves(const GameState *game) {
+    if (!game || game->is_game_over) {
+        return board_get_valid_moves(NULL, PLAYER_WHITE);
+    }
+    return board_get_valid_moves(&game->board, game->current_player);
+}
+
+CompactState compact_from_game(const GameState *game) {
+    CompactState cs;
+    memset(&cs, 0, sizeof(CompactState));
+    if (!game) return cs;
+    cs.board = game->board;
+    cs.current_player = (uint8_t)game->current_player;
+    cs.is_game_over = game->is_game_over;
+    cs.is_draw = game->is_draw;
+    cs.winner = (uint8_t)game->winner;
+    cs.hash = game->hash;
+    return cs;
+}
+
+void compact_to_game(const CompactState *compact, GameState *game) {
+    if (!compact || !game) return;
+    memset(game, 0, sizeof(GameState));
+    game->board = compact->board;
+    game->current_player = (Player)compact->current_player;
+    game->is_game_over = compact->is_game_over;
+    game->is_draw = compact->is_draw;
+    game->winner = (Player)compact->winner;
+    game->hash = compact->hash;
+    game->selected_row = -1;
+    game->selected_col = -1;
+    game->white_eaten_count = 0;
+    game->black_eaten_count = 0;
+    game->history_count = 0;
+}
+
+int game_get_plies_since_irreversible(const GameState *game) {
+    if (!game || game->history_count <= 1) return 0;
+    
+    int count = 0;
+    for (int i = game->history_count - 1; i > 0; i--) {
+        const PositionKey *curr = &game->history[i];
+        const PositionKey *prev = &game->history[i - 1];
+        
+        int curr_pieces = __builtin_popcount(curr->wm) + __builtin_popcount(curr->wk) +
+                          __builtin_popcount(curr->bm) + __builtin_popcount(curr->bk);
+        int prev_pieces = __builtin_popcount(prev->wm) + __builtin_popcount(prev->wk) +
+                          __builtin_popcount(prev->bm) + __builtin_popcount(prev->bk);
+        
+        if (curr_pieces != prev_pieces) break;
+        if (curr->wm != prev->wm || curr->bm != prev->bm) break;
+        
+        count++;
+    }
+    return count;
+}
+
+bool compact_is_threefold_repetition(const SearchHistory *hist, uint64_t hash) {
+    if (!hist) return false;
+    int count = 1; // Count the candidate position itself
+    
+    // 1. Search search-branch path hashes
+    for (int i = hist->path_len - 1; i >= 0; i--) {
+        if (hist->path_hashes[i] == hash) {
+            count++;
+            if (count >= 3) return true;
+        }
+    }
+    
+    // 2. Search root match history up to the last irreversible move
+    if (hist->root_history && hist->root_history_len > 0) {
+        for (int i = 0; i < hist->root_history_len; i++) {
+            if (hist->root_history[i].hash == hash) {
+                count++;
+                if (count >= 3) return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+bool compact_execute_move(CompactState *state, Move move) {
+    if (move_is_none(move)) return false;
+    
+    int from = move.from;
+    int to = move.to;
+    uint32_t from_mask = 1U << from;
+    uint32_t to_mask = 1U << to;
+    Board *b = &state->board;
+    Player cur = (Player)state->current_player;
+    
+    if (cur == PLAYER_WHITE) {
+        if (b->white_men & from_mask) {
+            b->white_men &= ~from_mask;
+            state->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_WHITE_MAN][from];
+            if (move.is_prom || to >= 28) {
+                b->white_kings |= to_mask;
+                state->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_WHITE_KING][to];
+            } else {
+                b->white_men |= to_mask;
+                state->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_WHITE_MAN][to];
+            }
+        } else if (b->white_kings & from_mask) {
+            b->white_kings &= ~from_mask;
+            b->white_kings |= to_mask;
+            state->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_WHITE_KING][from];
+            state->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_WHITE_KING][to];
+        } else {
+            return false;
+        }
+        
+        if (move.is_cap) {
+            for (int j = 0; j < move.jumps; j++) {
+                int cap_sq = move.caps[j];
+                uint32_t cmask = 1U << cap_sq;
+                if (b->black_men & cmask) {
+                    b->black_men &= ~cmask;
+                    state->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_BLACK_MAN][cap_sq];
+                } else if (b->black_kings & cmask) {
+                    b->black_kings &= ~cmask;
+                    state->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_BLACK_KING][cap_sq];
+                }
+            }
+        }
+    } else {
+        if (b->black_men & from_mask) {
+            b->black_men &= ~from_mask;
+            state->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_BLACK_MAN][from];
+            if (move.is_prom || to <= 3) {
+                b->black_kings |= to_mask;
+                state->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_BLACK_KING][to];
+            } else {
+                b->black_men |= to_mask;
+                state->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_BLACK_MAN][to];
+            }
+        } else if (b->black_kings & from_mask) {
+            b->black_kings &= ~from_mask;
+            b->black_kings |= to_mask;
+            state->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_BLACK_KING][from];
+            state->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_BLACK_KING][to];
+        } else {
+            return false;
+        }
+        
+        if (move.is_cap) {
+            for (int j = 0; j < move.jumps; j++) {
+                int cap_sq = move.caps[j];
+                uint32_t cmask = 1U << cap_sq;
+                if (b->white_men & cmask) {
+                    b->white_men &= ~cmask;
+                    state->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_WHITE_MAN][cap_sq];
+                } else if (b->white_kings & cmask) {
+                    b->white_kings &= ~cmask;
+                    state->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_WHITE_KING][cap_sq];
+                }
+            }
+        }
+    }
+    
+    // Switch turn
+    state->hash ^= g_zobrist_player;
+    state->current_player = (cur == PLAYER_WHITE) ? PLAYER_BLACK : PLAYER_WHITE;
+    
+    // Check if opponent has no pieces left (instant terminal)
+    uint32_t opp_pieces = (state->current_player == PLAYER_WHITE) ?
+        BOARD_WHITE_PIECES(*b) : BOARD_BLACK_PIECES(*b);
+    if (opp_pieces == 0) {
+        state->is_game_over = true;
+        state->is_draw = false;
+        state->winner = (uint8_t)cur;
+    }
+    
+    return true;
+}
+
 int game_get_repetition_count(const GameState *game) {
     if (!game || game->history_count == 0) return 0;
     
@@ -671,7 +845,7 @@ bool game_execute_move(GameState *game, Move move) {
                     cap_type = PIECE_BLACK_DAMA;
                     game->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_BLACK_KING][cap_sq];
                 }
-                if (game->white_eaten_count < 12 && cap_type != PIECE_NONE) {
+                if (game->white_eaten_count >= 0 && game->white_eaten_count < 12 && cap_type != PIECE_NONE) {
                     game->white_eaten_list[game->white_eaten_count++] = cap_type;
                 }
             }
@@ -710,7 +884,7 @@ bool game_execute_move(GameState *game, Move move) {
                     cap_type = PIECE_WHITE_DAMA;
                     game->hash ^= g_zobrist_pieces[ZOBRIST_PIECE_WHITE_KING][cap_sq];
                 }
-                if (game->black_eaten_count < 12 && cap_type != PIECE_NONE) {
+                if (game->black_eaten_count >= 0 && game->black_eaten_count < 12 && cap_type != PIECE_NONE) {
                     game->black_eaten_list[game->black_eaten_count++] = cap_type;
                 }
             }
@@ -722,7 +896,7 @@ bool game_execute_move(GameState *game, Move move) {
     game->current_player = (cur == PLAYER_WHITE) ? PLAYER_BLACK : PLAYER_WHITE;
     
     // Record new state in history
-    if (game->history_count < MAX_GAME_HISTORY) {
+    if (game->history_count >= 0 && game->history_count < MAX_GAME_HISTORY) {
         game->history[game->history_count++] = (PositionKey){
             .wm = game->board.white_men,
             .wk = game->board.white_kings,
