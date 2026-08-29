@@ -186,6 +186,29 @@ static void ui_add_quad(float x, float y, float w, float h, vec4 color) {
     ui_add_quad_raw(x, y, w, h, color, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
 }
 
+static void ui_add_circle(float cx, float cy, float radius, vec4 color) {
+    const int segments = 16;
+    if (ui_vert_count + segments * 3 > UI_MAX_VERTS) return;
+    
+    for (int i = 0; i < segments; i++) {
+        float theta1 = (float)i * (6.2831853f / (float)segments);
+        float theta2 = (float)(i + 1) * (6.2831853f / (float)segments);
+        
+        float x1 = cx + cosf(theta1) * radius;
+        float y1 = cy + sinf(theta1) * radius;
+        float x2 = cx + cosf(theta2) * radius;
+        float y2 = cy + sinf(theta2) * radius;
+        
+        UIVertex v_center = { cx, cy, color[0], color[1], color[2], color[3], 0.0f, 0.0f, 0.0f };
+        UIVertex v1       = { x1, y1, color[0], color[1], color[2], color[3], 0.0f, 0.0f, 0.0f };
+        UIVertex v2       = { x2, y2, color[0], color[1], color[2], color[3], 0.0f, 0.0f, 0.0f };
+        
+        ui_verts[ui_vert_count++] = v_center;
+        ui_verts[ui_vert_count++] = v1;
+        ui_verts[ui_vert_count++] = v2;
+    }
+}
+
 static void ui_add_text(const char *str, float x, float y, float scale, vec4 color) {
     int len = (int)strlen(str);
     float char_w = 8.0f * scale;
@@ -966,12 +989,15 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             snprintf(title_str, sizeof(title_str), "BIANCO: %s", engine_get_type_name(game->white_engine));
             ui_add_text_centered(title_str, w_lbl_x + lbl_w * 0.5f, 32.0f * S, 0.95f * S, text_sub);
 
-            char stat1[64];
             if (ui->is_thinking && ui->thinking_player == PLAYER_WHITE) {
-                double el = glfwGetTime() - ui->thinking_start_time;
-                snprintf(stat1, sizeof(stat1), "CALCOLO: %.2fs", el);
-                ui_add_text_centered(stat1, w_lbl_x + lbl_w * 0.5f, 48.0f * S, 0.95f * S, text_green);
-            } else if (ui->white_stats.is_valid) {
+                float char_w = 8.0f * 0.95f * S;
+                float total_w = (float)strlen(title_str) * char_w;
+                float start_x = (w_lbl_x + lbl_w * 0.5f) - total_w * 0.5f;
+                ui_add_circle(start_x - 8.0f * S, 32.0f * S, 3.5f * S, text_green);
+            }
+
+            char stat1[64];
+            if (ui->white_stats.is_valid) {
                 snprintf(stat1, sizeof(stat1), "%.2fs | WIN:%.0f%% | %.0fk/s", 
                          ui->white_stats.last_time, ui->white_stats.win_rate * 100.0f, ui->white_stats.iterations_sec / 1000.0);
                 ui_add_text_centered(stat1, w_lbl_x + lbl_w * 0.5f, 48.0f * S, 0.90f * S, text_gold);
@@ -1002,12 +1028,15 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             snprintf(title_str, sizeof(title_str), "NERO: %s", engine_get_type_name(game->black_engine));
             ui_add_text_centered(title_str, b_lbl_x + lbl_w * 0.5f, 32.0f * S, 0.95f * S, text_sub);
 
-            char stat1[64];
             if (ui->is_thinking && ui->thinking_player == PLAYER_BLACK) {
-                double el = glfwGetTime() - ui->thinking_start_time;
-                snprintf(stat1, sizeof(stat1), "CALCOLO: %.2fs", el);
-                ui_add_text_centered(stat1, b_lbl_x + lbl_w * 0.5f, 48.0f * S, 0.95f * S, text_green);
-            } else if (ui->black_stats.is_valid) {
+                float char_w = 8.0f * 0.95f * S;
+                float total_w = (float)strlen(title_str) * char_w;
+                float start_x = (b_lbl_x + lbl_w * 0.5f) - total_w * 0.5f;
+                ui_add_circle(start_x - 8.0f * S, 32.0f * S, 3.5f * S, text_green);
+            }
+
+            char stat1[64];
+            if (ui->black_stats.is_valid) {
                 snprintf(stat1, sizeof(stat1), "%.2fs | WIN:%.0f%% | %.0fk/s", 
                          ui->black_stats.last_time, ui->black_stats.win_rate * 100.0f, ui->black_stats.iterations_sec / 1000.0);
                 ui_add_text_centered(stat1, b_lbl_x + lbl_w * 0.5f, 48.0f * S, 0.90f * S, text_gold);

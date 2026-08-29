@@ -1,0 +1,187 @@
+type,model,budget_sec,phase,pos_id,pos_name,root_visits,search_time_sec,iter_per_sec
+detail,MCTS UCB1,0.20,Opening,1,"Root Board (12W vs 12B)",17600,0.2009,87602.2
+detail,MCTS UCB1,0.20,Opening,2,"1. 09-13 (sq 8->12)",17472,0.2014,86761.8
+detail,MCTS UCB1,0.20,Opening,3,"1. 10-14 (sq 9->13)",17472,0.2011,86892.7
+detail,MCTS UCB1,0.20,Opening,4,"1. 11-15 (sq 10->14)",17856,0.2011,88777.8
+detail,MCTS UCB1,0.20,Opening,5,"1. 12-16 (sq 11->15)",17600,0.2008,87659.9
+detail,MCTS UCB1,0.20,Opening,6,"1. 09-13 22-18",0,0.0000,0.0
+detail,MCTS UCB1,0.20,Opening,7,"1. 10-14 21-17",17920,0.2007,89282.3
+detail,MCTS UCB1,0.20,Opening,8,"1. 10-14 22-18",18048,0.2010,89795.9
+detail,MCTS UCB1,0.20,Opening,9,"1. 11-15 23-19",17856,0.2006,89011.2
+detail,MCTS UCB1,0.20,Opening,10,"1. 09-14 21-18",0,0.0000,0.0
+detail,MCTS UCB1,0.20,Midgame,11,"10W vs 10B Center Tension",21248,0.2008,105824.5
+detail,MCTS UCB1,0.20,Midgame,12,"9W vs 9B Flank Attack",26688,0.2008,132889.8
+detail,MCTS UCB1,0.20,Midgame,13,"8W vs 8B Tactical Contact",27008,0.2007,134545.0
+detail,MCTS UCB1,0.20,Midgame,14,"8W vs 8B Symmetrical Block",0,0.0000,0.0
+detail,MCTS UCB1,0.20,Midgame,15,"7W vs 7B Outposts",28544,0.2006,142286.5
+detail,MCTS UCB1,0.20,Midgame,16,"7W vs 7B Dynamic Pressure",24512,0.2007,122104.9
+detail,MCTS UCB1,0.20,Midgame,17,"6W vs 6B Crowning Race",0,0.0000,0.0
+detail,MCTS UCB1,0.20,Midgame,18,"6W vs 6B (1 King each)",0,0.0000,0.0
+detail,MCTS UCB1,0.20,Midgame,19,"5W vs 5B Dense Wedge",25344,0.2005,126375.2
+detail,MCTS UCB1,0.20,Midgame,20,"5W vs 5B King Breakthrough",0,0.0000,0.0
+detail,MCTS UCB1,0.20,Endgame,21,"2 Kings vs 1 King",22488,0.0608,369635.0
+detail,MCTS UCB1,0.20,Endgame,22,"3 Kings vs 1 King",59968,0.2005,299152.8
+detail,MCTS UCB1,0.20,Endgame,23,"2 Kings vs 2 Kings",48768,0.2007,242992.3
+detail,MCTS UCB1,0.20,Endgame,24,"King + Man vs King",87040,0.2004,434319.2
+detail,MCTS UCB1,0.20,Endgame,25,"1 King vs 1 King",0,0.0000,0.0
+detail,MCTS UCB1,0.20,Endgame,26,"3 Kings vs 2 Kings",37568,0.2005,187378.5
+detail,MCTS UCB1,0.20,Endgame,27,"2M + 1K vs 2M + 1K",40448,0.2007,201569.7
+detail,MCTS UCB1,0.20,Endgame,28,"2K + 1M vs 1K + 2M",36736,0.2007,183017.8
+detail,MCTS UCB1,0.20,Endgame,29,"4 Kings vs 2 Kings",47424,0.2005,236510.7
+detail,MCTS UCB1,0.20,Endgame,30,"2 Men vs 2 Men Race",41728,0.2004,208194.2
+summary,MCTS UCB1,0.20,ALL,0,"Overall Mean",717336,6.0000,119556.0
+detail,MCTS PUCT,0.20,Opening,1,"Root Board (12W vs 12B)",14336,0.2112,67887.4
+detail,MCTS PUCT,0.20,Opening,2,"1. 09-13 (sq 8->12)",13312,0.2038,65311.1
+detail,MCTS PUCT,0.20,Opening,3,"1. 10-14 (sq 9->13)",14336,0.2004,71539.0
+detail,MCTS PUCT,0.20,Opening,4,"1. 11-15 (sq 10->14)",14848,0.2058,72144.2
+detail,MCTS PUCT,0.20,Opening,5,"1. 12-16 (sq 11->15)",14336,0.2050,69935.0
+detail,MCTS PUCT,0.20,Opening,6,"1. 09-13 22-18",0,0.0000,0.0
+detail,MCTS PUCT,0.20,Opening,7,"1. 10-14 21-17",14336,0.2021,70948.7
+detail,MCTS PUCT,0.20,Opening,8,"1. 10-14 22-18",14848,0.2008,73932.0
+detail,MCTS PUCT,0.20,Opening,9,"1. 11-15 23-19",14848,0.2045,72597.8
+detail,MCTS PUCT,0.20,Opening,10,"1. 09-14 21-18",0,0.0000,0.0
+detail,MCTS PUCT,0.20,Midgame,11,"10W vs 10B Center Tension",16896,0.2022,83563.8
+detail,MCTS PUCT,0.20,Midgame,12,"9W vs 9B Flank Attack",21504,0.2050,104912.2
+detail,MCTS PUCT,0.20,Midgame,13,"8W vs 8B Tactical Contact",22016,0.2032,108361.0
+detail,MCTS PUCT,0.20,Midgame,14,"8W vs 8B Symmetrical Block",0,0.0000,0.0
+detail,MCTS PUCT,0.20,Midgame,15,"7W vs 7B Outposts",22016,0.2045,107665.7
+detail,MCTS PUCT,0.20,Midgame,16,"7W vs 7B Dynamic Pressure",18432,0.2044,90190.2
+detail,MCTS PUCT,0.20,Midgame,17,"6W vs 6B Crowning Race",0,0.0000,0.0
+detail,MCTS PUCT,0.20,Midgame,18,"6W vs 6B (1 King each)",0,0.0000,0.0
+detail,MCTS PUCT,0.20,Midgame,19,"5W vs 5B Dense Wedge",18432,0.2021,91197.5
+detail,MCTS PUCT,0.20,Midgame,20,"5W vs 5B King Breakthrough",0,0.0000,0.0
+detail,MCTS PUCT,0.20,Endgame,21,"2 Kings vs 1 King",5802,0.0187,311050.8
+detail,MCTS PUCT,0.20,Endgame,22,"3 Kings vs 1 King",13554,0.0539,251435.4
+detail,MCTS PUCT,0.20,Endgame,23,"2 Kings vs 2 Kings",37376,0.2007,186260.7
+detail,MCTS PUCT,0.20,Endgame,24,"King + Man vs King",43972,0.1181,372420.0
+detail,MCTS PUCT,0.20,Endgame,25,"1 King vs 1 King",0,0.0000,0.0
+detail,MCTS PUCT,0.20,Endgame,26,"3 Kings vs 2 Kings",28160,0.2034,138458.2
+detail,MCTS PUCT,0.20,Endgame,27,"2M + 1K vs 2M + 1K",29696,0.2036,145836.3
+detail,MCTS PUCT,0.20,Endgame,28,"2K + 1M vs 1K + 2M",27648,0.2021,136793.5
+detail,MCTS PUCT,0.20,Endgame,29,"4 Kings vs 2 Kings",34816,0.2031,171438.6
+detail,MCTS PUCT,0.20,Endgame,30,"2 Men vs 2 Men Race",31232,0.2017,154817.3
+summary,MCTS PUCT,0.20,ALL,0,"Overall Mean",486752,6.0000,81125.3
+detail,MCTS UCB1,1.00,Opening,1,"Root Board (12W vs 12B)",86848,1.0007,86789.5
+detail,MCTS UCB1,1.00,Opening,2,"1. 09-13 (sq 8->12)",87424,1.0011,87324.0
+detail,MCTS UCB1,1.00,Opening,3,"1. 10-14 (sq 9->13)",88384,1.0010,88297.4
+detail,MCTS UCB1,1.00,Opening,4,"1. 11-15 (sq 10->14)",89344,1.0003,89313.0
+detail,MCTS UCB1,1.00,Opening,5,"1. 12-16 (sq 11->15)",87552,1.0008,87483.3
+detail,MCTS UCB1,1.00,Opening,6,"1. 09-13 22-18",0,0.0000,0.0
+detail,MCTS UCB1,1.00,Opening,7,"1. 10-14 21-17",91392,1.0007,91327.9
+detail,MCTS UCB1,1.00,Opening,8,"1. 10-14 22-18",89664,1.0008,89590.7
+detail,MCTS UCB1,1.00,Opening,9,"1. 11-15 23-19",88896,1.0004,88856.2
+detail,MCTS UCB1,1.00,Opening,10,"1. 09-14 21-18",0,0.0000,0.0
+detail,MCTS UCB1,1.00,Midgame,11,"10W vs 10B Center Tension",110272,1.0006,110210.2
+detail,MCTS UCB1,1.00,Midgame,12,"9W vs 9B Flank Attack",136128,1.0005,136059.3
+detail,MCTS UCB1,1.00,Midgame,13,"8W vs 8B Tactical Contact",135552,1.0005,135482.3
+detail,MCTS UCB1,1.00,Midgame,14,"8W vs 8B Symmetrical Block",0,0.0000,0.0
+detail,MCTS UCB1,1.00,Midgame,15,"7W vs 7B Outposts",139200,1.0008,139090.5
+detail,MCTS UCB1,1.00,Midgame,16,"7W vs 7B Dynamic Pressure",122816,1.0004,122764.0
+detail,MCTS UCB1,1.00,Midgame,17,"6W vs 6B Crowning Race",0,0.0000,0.0
+detail,MCTS UCB1,1.00,Midgame,18,"6W vs 6B (1 King each)",0,0.0000,0.0
+detail,MCTS UCB1,1.00,Midgame,19,"5W vs 5B Dense Wedge",126976,1.0006,126903.6
+detail,MCTS UCB1,1.00,Midgame,20,"5W vs 5B King Breakthrough",0,0.0000,0.0
+detail,MCTS UCB1,1.00,Endgame,21,"2 Kings vs 1 King",30120,0.0805,374298.2
+detail,MCTS UCB1,1.00,Endgame,22,"3 Kings vs 1 King",154784,0.5185,298509.5
+detail,MCTS UCB1,1.00,Endgame,23,"2 Kings vs 2 Kings",236032,1.0006,235880.4
+detail,MCTS UCB1,1.00,Endgame,24,"King + Man vs King",410752,1.0004,410570.6
+detail,MCTS UCB1,1.00,Endgame,25,"1 King vs 1 King",0,0.0000,0.0
+detail,MCTS UCB1,1.00,Endgame,26,"3 Kings vs 2 Kings",184768,1.0007,184633.5
+detail,MCTS UCB1,1.00,Endgame,27,"2M + 1K vs 2M + 1K",199360,1.0004,199278.1
+detail,MCTS UCB1,1.00,Endgame,28,"2K + 1M vs 1K + 2M",175360,1.0005,175263.9
+detail,MCTS UCB1,1.00,Endgame,29,"4 Kings vs 2 Kings",230144,1.0008,229969.5
+detail,MCTS UCB1,1.00,Endgame,30,"2 Men vs 2 Men Race",201024,1.0004,200952.1
+summary,MCTS UCB1,1.00,ALL,0,"Overall Mean",3302792,30.0000,110093.1
+detail,MCTS PUCT,1.00,Opening,1,"Root Board (12W vs 12B)",69120,1.0023,68963.0
+detail,MCTS PUCT,1.00,Opening,2,"1. 09-13 (sq 8->12)",70656,1.0010,70582.3
+detail,MCTS PUCT,1.00,Opening,3,"1. 10-14 (sq 9->13)",71168,1.0038,70896.8
+detail,MCTS PUCT,1.00,Opening,4,"1. 11-15 (sq 10->14)",71168,1.0035,70920.2
+detail,MCTS PUCT,1.00,Opening,5,"1. 12-16 (sq 11->15)",71168,1.0071,70665.1
+detail,MCTS PUCT,1.00,Opening,6,"1. 09-13 22-18",0,0.0000,0.0
+detail,MCTS PUCT,1.00,Opening,7,"1. 10-14 21-17",74752,1.0040,74451.3
+detail,MCTS PUCT,1.00,Opening,8,"1. 10-14 22-18",75776,1.0063,75301.4
+detail,MCTS PUCT,1.00,Opening,9,"1. 11-15 23-19",74752,1.0030,74531.3
+detail,MCTS PUCT,1.00,Opening,10,"1. 09-14 21-18",0,0.0000,0.0
+detail,MCTS PUCT,1.00,Midgame,11,"10W vs 10B Center Tension",87552,1.0014,87426.1
+detail,MCTS PUCT,1.00,Midgame,12,"9W vs 9B Flank Attack",101888,1.0052,101358.6
+detail,MCTS PUCT,1.00,Midgame,13,"8W vs 8B Tactical Contact",110592,1.0043,110115.5
+detail,MCTS PUCT,1.00,Midgame,14,"8W vs 8B Symmetrical Block",0,0.0000,0.0
+detail,MCTS PUCT,1.00,Midgame,15,"7W vs 7B Outposts",100864,1.0059,100273.6
+detail,MCTS PUCT,1.00,Midgame,16,"7W vs 7B Dynamic Pressure",89088,1.0008,89014.0
+detail,MCTS PUCT,1.00,Midgame,17,"6W vs 6B Crowning Race",0,0.0000,0.0
+detail,MCTS PUCT,1.00,Midgame,18,"6W vs 6B (1 King each)",0,0.0000,0.0
+detail,MCTS PUCT,1.00,Midgame,19,"5W vs 5B Dense Wedge",90624,1.0010,90534.1
+detail,MCTS PUCT,1.00,Midgame,20,"5W vs 5B King Breakthrough",0,0.0000,0.0
+detail,MCTS PUCT,1.00,Endgame,21,"2 Kings vs 1 King",5474,0.0175,313027.2
+detail,MCTS PUCT,1.00,Endgame,22,"3 Kings vs 1 King",18176,0.0704,258236.1
+detail,MCTS PUCT,1.00,Endgame,23,"2 Kings vs 2 Kings",186880,1.0031,186296.4
+detail,MCTS PUCT,1.00,Endgame,24,"King + Man vs King",58352,0.1576,370243.7
+detail,MCTS PUCT,1.00,Endgame,25,"1 King vs 1 King",0,0.0000,0.0
+detail,MCTS PUCT,1.00,Endgame,26,"3 Kings vs 2 Kings",143872,1.0033,143393.3
+detail,MCTS PUCT,1.00,Endgame,27,"2M + 1K vs 2M + 1K",142848,1.0009,142716.6
+detail,MCTS PUCT,1.00,Endgame,28,"2K + 1M vs 1K + 2M",136192,1.0034,135726.0
+detail,MCTS PUCT,1.00,Endgame,29,"4 Kings vs 2 Kings",174592,1.0013,174368.4
+detail,MCTS PUCT,1.00,Endgame,30,"2 Men vs 2 Men Race",156672,1.0029,156221.4
+summary,MCTS PUCT,1.00,ALL,0,"Overall Mean",2182226,30.0000,72740.9
+detail,MCTS UCB1,3.00,Opening,1,"Root Board (12W vs 12B)",260416,3.0010,86777.8
+detail,MCTS UCB1,3.00,Opening,2,"1. 09-13 (sq 8->12)",262656,3.0004,87539.3
+detail,MCTS UCB1,3.00,Opening,3,"1. 10-14 (sq 9->13)",270464,3.0007,90132.9
+detail,MCTS UCB1,3.00,Opening,4,"1. 11-15 (sq 10->14)",268928,3.0009,89615.3
+detail,MCTS UCB1,3.00,Opening,5,"1. 12-16 (sq 11->15)",262912,3.0006,87619.6
+detail,MCTS UCB1,3.00,Opening,6,"1. 09-13 22-18",0,0.0000,0.0
+detail,MCTS UCB1,3.00,Opening,7,"1. 10-14 21-17",269824,3.0014,89899.1
+detail,MCTS UCB1,3.00,Opening,8,"1. 10-14 22-18",272448,3.0010,90784.5
+detail,MCTS UCB1,3.00,Opening,9,"1. 11-15 23-19",271040,3.0009,90318.1
+detail,MCTS UCB1,3.00,Opening,10,"1. 09-14 21-18",0,0.0000,0.0
+detail,MCTS UCB1,3.00,Midgame,11,"10W vs 10B Center Tension",342144,3.0006,114026.4
+detail,MCTS UCB1,3.00,Midgame,12,"9W vs 9B Flank Attack",416704,3.0005,138880.2
+detail,MCTS UCB1,3.00,Midgame,13,"8W vs 8B Tactical Contact",408576,3.0006,136166.6
+detail,MCTS UCB1,3.00,Midgame,14,"8W vs 8B Symmetrical Block",0,0.0000,0.0
+detail,MCTS UCB1,3.00,Midgame,15,"7W vs 7B Outposts",408640,3.0011,136163.4
+detail,MCTS UCB1,3.00,Midgame,16,"7W vs 7B Dynamic Pressure",359360,3.0009,119751.3
+detail,MCTS UCB1,3.00,Midgame,17,"6W vs 6B Crowning Race",0,0.0000,0.0
+detail,MCTS UCB1,3.00,Midgame,18,"6W vs 6B (1 King each)",0,0.0000,0.0
+detail,MCTS UCB1,3.00,Midgame,19,"5W vs 5B Dense Wedge",369216,3.0008,123040.5
+detail,MCTS UCB1,3.00,Midgame,20,"5W vs 5B King Breakthrough",0,0.0000,0.0
+detail,MCTS UCB1,3.00,Endgame,21,"2 Kings vs 1 King",24729,0.0664,372444.3
+detail,MCTS UCB1,3.00,Endgame,22,"3 Kings vs 1 King",152774,0.5049,302555.6
+detail,MCTS UCB1,3.00,Endgame,23,"2 Kings vs 2 Kings",696320,3.0005,232070.7
+detail,MCTS UCB1,3.00,Endgame,24,"King + Man vs King",1179648,3.0005,393147.3
+detail,MCTS UCB1,3.00,Endgame,25,"1 King vs 1 King",0,0.0000,0.0
+detail,MCTS UCB1,3.00,Endgame,26,"3 Kings vs 2 Kings",555840,3.0006,185243.3
+detail,MCTS UCB1,3.00,Endgame,27,"2M + 1K vs 2M + 1K",575360,3.0005,191753.7
+detail,MCTS UCB1,3.00,Endgame,28,"2K + 1M vs 1K + 2M",537408,3.0004,179114.9
+detail,MCTS UCB1,3.00,Endgame,29,"4 Kings vs 2 Kings",687616,3.0004,229175.1
+detail,MCTS UCB1,3.00,Endgame,30,"2 Men vs 2 Men Race",606848,3.0005,202251.4
+summary,MCTS UCB1,3.00,ALL,0,"Overall Mean",9459871,90.0000,105109.7
+detail,MCTS PUCT,3.00,Opening,1,"Root Board (12W vs 12B)",211968,3.0069,70495.0
+detail,MCTS PUCT,3.00,Opening,2,"1. 09-13 (sq 8->12)",211456,3.0069,70322.7
+detail,MCTS PUCT,3.00,Opening,3,"1. 10-14 (sq 9->13)",192000,3.0031,63932.9
+detail,MCTS PUCT,3.00,Opening,4,"1. 11-15 (sq 10->14)",220672,3.0055,73421.9
+detail,MCTS PUCT,3.00,Opening,5,"1. 12-16 (sq 11->15)",216064,3.0011,71995.7
+detail,MCTS PUCT,3.00,Opening,6,"1. 09-13 22-18",0,0.0000,0.0
+detail,MCTS PUCT,3.00,Opening,7,"1. 10-14 21-17",221696,3.0016,73858.6
+detail,MCTS PUCT,3.00,Opening,8,"1. 10-14 22-18",227328,3.0005,75762.7
+detail,MCTS PUCT,3.00,Opening,9,"1. 11-15 23-19",223744,3.0058,74437.5
+detail,MCTS PUCT,3.00,Opening,10,"1. 09-14 21-18",0,0.0000,0.0
+detail,MCTS PUCT,3.00,Midgame,11,"10W vs 10B Center Tension",267264,3.0007,89065.8
+detail,MCTS PUCT,3.00,Midgame,12,"9W vs 9B Flank Attack",295424,3.0040,98342.8
+detail,MCTS PUCT,3.00,Midgame,13,"8W vs 8B Tactical Contact",327680,3.0007,109200.5
+detail,MCTS PUCT,3.00,Midgame,14,"8W vs 8B Symmetrical Block",0,0.0000,0.0
+detail,MCTS PUCT,3.00,Midgame,15,"7W vs 7B Outposts",313344,3.0049,104278.6
+detail,MCTS PUCT,3.00,Midgame,16,"7W vs 7B Dynamic Pressure",269824,3.0015,89896.1
+detail,MCTS PUCT,3.00,Midgame,17,"6W vs 6B Crowning Race",0,0.0000,0.0
+detail,MCTS PUCT,3.00,Midgame,18,"6W vs 6B (1 King each)",0,0.0000,0.0
+detail,MCTS PUCT,3.00,Midgame,19,"5W vs 5B Dense Wedge",260608,3.0013,86831.0
+detail,MCTS PUCT,3.00,Midgame,20,"5W vs 5B King Breakthrough",0,0.0000,0.0
+detail,MCTS PUCT,3.00,Endgame,21,"2 Kings vs 1 King",5663,0.0181,312100.4
+detail,MCTS PUCT,3.00,Endgame,22,"3 Kings vs 1 King",16272,0.0638,255038.6
+detail,MCTS PUCT,3.00,Endgame,23,"2 Kings vs 2 Kings",384512,2.1321,180341.9
+detail,MCTS PUCT,3.00,Endgame,24,"King + Man vs King",49035,0.1330,368776.8
+detail,MCTS PUCT,3.00,Endgame,25,"1 King vs 1 King",0,0.0000,0.0
+detail,MCTS PUCT,3.00,Endgame,26,"3 Kings vs 2 Kings",268800,1.8610,144436.8
+detail,MCTS PUCT,3.00,Endgame,27,"2M + 1K vs 2M + 1K",434176,3.0020,144627.1
+detail,MCTS PUCT,3.00,Endgame,28,"2K + 1M vs 1K + 2M",337920,2.5303,133551.7
+detail,MCTS PUCT,3.00,Endgame,29,"4 Kings vs 2 Kings",310784,1.8016,172501.8
+detail,MCTS PUCT,3.00,Endgame,30,"2 Men vs 2 Men Race",425984,2.7771,153392.3
+summary,MCTS PUCT,3.00,ALL,0,"Overall Mean",5692218,90.0000,63246.9

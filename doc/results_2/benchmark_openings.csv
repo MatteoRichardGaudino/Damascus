@@ -1,0 +1,6 @@
+id,scenario_name,turn,move_count,best_move,score,depth,passed,probes_per_sec,avg_latency_ns
+1,"Root Board (12W vs 12B FID)","WHITE",7,"09->13",12,24,1,9784046.53,102.2
+2,"1-Ply: 1. 09-13 (White)","BLACK",7,"21->18",12,22,1,9784046.53,102.2
+3,"2-Ply: 1. 09-13 22-18 (Black)","WHITE",0,"--",0,0,0,9784046.53,102.2
+4,"2-Ply: 1. 10-14 23-19 (Black)","WHITE",0,"--",0,0,0,9784046.53,102.2
+5,"Out-of-Book Endgame State","WHITE",0,"--",0,0,1,9784046.53,102.2

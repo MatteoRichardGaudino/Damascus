@@ -432,6 +432,8 @@ static bool parse_cli_args(int argc, char **argv, CliConfig *cfg) {
             cfg->games_per_pair = 2;
         } else if (strcmp(arg, "--bench") == 0 || strcmp(arg, "-b") == 0) {
             cfg->mode = CLI_MODE_BENCH;
+        } else if (strcmp(arg, "--bench-game") == 0) {
+            cfg->mode = CLI_MODE_BENCH_GAME;
         } else if (strcmp(arg, "--test-endgames") == 0) {
             cfg->mode = CLI_MODE_TEST_ENDGAMES;
         } else if (strcmp(arg, "--test-opening-book") == 0) {
@@ -1567,63 +1569,438 @@ static int run_benchmark_mode(const CliConfig *cfg) {
     printf("  Uniform Random Rollout (eps=1.00):          %6d sims in %6.3fs (%8.1f sims/s)\n\n",
            rollout_trials, t_rand, (double)rollout_trials / (t_rand > 0 ? t_rand : 1));
 
-    // 3. MCTS Search Engines Benchmark (Iterations/sec across time budgets)
-    printf("3. MCTS SEARCH ENGINES ITERATION THROUGHPUT:\n");
-    printf("------------------------------------------------------------------------------\n");
-    printf("  Model     | Budget | Search Time | Root Visits | Total Pool Nodes | Iterations/s\n");
-    printf("------------+--------+-------------+-------------+------------------+-------------\n");
+    // 3. MCTS Search Engines Benchmark Across 30 Representative Positions (10 Openings, 10 Midgame, 10 Endgame)
+    printf("3. MCTS SEARCH ENGINES ITERATION BENCHMARK (30 REPRESENTATIVE POSITIONS):\n");
+    printf("------------------------------------------------------------------------------------------------------------------------\n");
+    printf("  Model     | Budget | Opening (iter/s) | Midgame (iter/s) | Endgame (iter/s) | Overall Mean (iter/s) | Total 30-Pos Visits\n");
+    printf("------------+--------+------------------+------------------+------------------+-----------------------+---------------------\n");
+
+    typedef struct {
+        const char *name;
+        const char *phase;
+        uint32_t wm;
+        uint32_t wk;
+        uint32_t bm;
+        uint32_t bk;
+        Player to_move;
+    } BenchPosition;
+
+    static const BenchPosition s_bench_pos[30] = {
+        // === 10 OPENINGS ===
+        { "Root Board (12W vs 12B)", "Opening", 0x00000FFF, 0, 0xFFF00000, 0, PLAYER_WHITE },
+        { "1. 09-13 (sq 8->12)", "Opening", (0x00000FFF & ~(1U<<8)) | (1U<<12), 0, 0xFFF00000, 0, PLAYER_BLACK },
+        { "1. 10-14 (sq 9->13)", "Opening", (0x00000FFF & ~(1U<<9)) | (1U<<13), 0, 0xFFF00000, 0, PLAYER_BLACK },
+        { "1. 11-15 (sq 10->14)", "Opening", (0x00000FFF & ~(1U<<10)) | (1U<<14), 0, 0xFFF00000, 0, PLAYER_BLACK },
+        { "1. 12-16 (sq 11->15)", "Opening", (0x00000FFF & ~(1U<<11)) | (1U<<15), 0, 0xFFF00000, 0, PLAYER_BLACK },
+        { "1. 09-13 22-18", "Opening", (0x00000FFF & ~(1U<<8)) | (1U<<12), 0, (0xFFF00000 & ~(1U<<21)) | (1U<<17), 0, PLAYER_WHITE },
+        { "1. 10-14 21-17", "Opening", (0x00000FFF & ~(1U<<9)) | (1U<<13), 0, (0xFFF00000 & ~(1U<<20)) | (1U<<16), 0, PLAYER_WHITE },
+        { "1. 10-14 22-18", "Opening", (0x00000FFF & ~(1U<<9)) | (1U<<13), 0, (0xFFF00000 & ~(1U<<21)) | (1U<<17), 0, PLAYER_WHITE },
+        { "1. 11-15 23-19", "Opening", (0x00000FFF & ~(1U<<10)) | (1U<<14), 0, (0xFFF00000 & ~(1U<<22)) | (1U<<18), 0, PLAYER_WHITE },
+        { "1. 09-14 21-18", "Opening", (0x00000FFF & ~(1U<<8)) | (1U<<13), 0, (0xFFF00000 & ~(1U<<20)) | (1U<<17), 0, PLAYER_WHITE },
+
+        // === 10 MIDGAME ===
+        { "10W vs 10B Center Tension", "Midgame",
+          (1U<<0)|(1U<<1)|(1U<<2)|(1U<<3)|(1U<<4)|(1U<<6)|(1U<<8)|(1U<<9)|(1U<<13)|(1U<<14), 0,
+          (1U<<17)|(1U<<18)|(1U<<22)|(1U<<23)|(1U<<25)|(1U<<27)|(1U<<28)|(1U<<29)|(1U<<30)|(1U<<31), 0, PLAYER_WHITE },
+        { "9W vs 9B Flank Attack", "Midgame",
+          (1U<<0)|(1U<<1)|(1U<<2)|(1U<<5)|(1U<<8)|(1U<<9)|(1U<<10)|(1U<<13)|(1U<<15), 0,
+          (1U<<16)|(1U<<18)|(1U<<21)|(1U<<22)|(1U<<24)|(1U<<26)|(1U<<29)|(1U<<30)|(1U<<31), 0, PLAYER_BLACK },
+        { "8W vs 8B Tactical Contact", "Midgame",
+          (1U<<0)|(1U<<2)|(1U<<3)|(1U<<7)|(1U<<9)|(1U<<10)|(1U<<14)|(1U<<15), 0,
+          (1U<<17)|(1U<<18)|(1U<<20)|(1U<<21)|(1U<<25)|(1U<<28)|(1U<<29)|(1U<<31), 0, PLAYER_WHITE },
+        { "8W vs 8B Symmetrical Block", "Midgame",
+          (1U<<1)|(1U<<2)|(1U<<3)|(1U<<6)|(1U<<9)|(1U<<10)|(1U<<13)|(1U<<14), 0,
+          (1U<<17)|(1U<<18)|(1U<<21)|(1U<<22)|(1U<<25)|(1U<<28)|(1U<<29)|(1U<<30), 0, PLAYER_BLACK },
+        { "7W vs 7B Outposts", "Midgame",
+          (1U<<0)|(1U<<1)|(1U<<4)|(1U<<8)|(1U<<12)|(1U<<14)|(1U<<19), 0,
+          (1U<<13)|(1U<<17)|(1U<<21)|(1U<<25)|(1U<<27)|(1U<<30)|(1U<<31), 0, PLAYER_WHITE },
+        { "7W vs 7B Dynamic Pressure", "Midgame",
+          (1U<<1)|(1U<<3)|(1U<<6)|(1U<<7)|(1U<<10)|(1U<<11)|(1U<<15), 0,
+          (1U<<16)|(1U<<20)|(1U<<21)|(1U<<24)|(1U<<26)|(1U<<28)|(1U<<30), 0, PLAYER_BLACK },
+        { "6W vs 6B Crowning Race", "Midgame",
+          (1U<<0)|(1U<<2)|(1U<<5)|(1U<<9)|(1U<<18)|(1U<<22), 0,
+          (1U<<10)|(1U<<14)|(1U<<21)|(1U<<26)|(1U<<29)|(1U<<31), 0, PLAYER_WHITE },
+        { "6W vs 6B (1 King each)", "Midgame",
+          (1U<<0)|(1U<<1)|(1U<<4)|(1U<<8)|(1U<<13), (1U<<27),
+          (1U<<18)|(1U<<23)|(1U<<28)|(1U<<30)|(1U<<31), (1U<<5), PLAYER_BLACK },
+        { "5W vs 5B Dense Wedge", "Midgame",
+          (1U<<2)|(1U<<3)|(1U<<7)|(1U<<11)|(1U<<14), 0,
+          (1U<<17)|(1U<<20)|(1U<<24)|(1U<<28)|(1U<<29), 0, PLAYER_WHITE },
+        { "5W vs 5B King Breakthrough", "Midgame",
+          (1U<<0)|(1U<<4)|(1U<<9)|(1U<<13), (1U<<23),
+          (1U<<18)|(1U<<22)|(1U<<26)|(1U<<31), (1U<<8), PLAYER_BLACK },
+
+        // === 10 ENDGAMES ===
+        { "2 Kings vs 1 King", "Endgame", 0, (1U<<0)|(1U<<1), 0, (1U<<31), PLAYER_WHITE },
+        { "3 Kings vs 1 King", "Endgame", 0, (1U<<0)|(1U<<1)|(1U<<2), 0, (1U<<31), PLAYER_WHITE },
+        { "2 Kings vs 2 Kings", "Endgame", 0, (1U<<0)|(1U<<1), 0, (1U<<30)|(1U<<31), PLAYER_WHITE },
+        { "King + Man vs King", "Endgame", (1U<<13), (1U<<28), 0, (1U<<31), PLAYER_WHITE },
+        { "1 King vs 1 King", "Endgame", 0, (1U<<0), 0, (1U<<28), PLAYER_WHITE },
+        { "3 Kings vs 2 Kings", "Endgame", 0, (1U<<4)|(1U<<12)|(1U<<20), 0, (1U<<15)|(1U<<27), PLAYER_WHITE },
+        { "2M + 1K vs 2M + 1K", "Endgame", (1U<<0)|(1U<<8), (1U<<22), (1U<<23)|(1U<<31), (1U<<9), PLAYER_BLACK },
+        { "2K + 1M vs 1K + 2M", "Endgame", (1U<<12), (1U<<1)|(1U<<5), (1U<<19)|(1U<<30), (1U<<26), PLAYER_WHITE },
+        { "4 Kings vs 2 Kings", "Endgame", 0, (1U<<0)|(1U<<3)|(1U<<28)|(1U<<31), 0, (1U<<14)|(1U<<17), PLAYER_WHITE },
+        { "2 Men vs 2 Men Race", "Endgame", (1U<<21)|(1U<<22), 0, (1U<<9)|(1U<<10), 0, PLAYER_WHITE }
+    };
+
+    typedef struct {
+        char model[16];
+        double budget;
+        double open_ips;
+        double mid_ips;
+        double end_ips;
+        double overall_ips;
+        uint64_t total_visits;
+    } BenchSummaryRow;
+
+    BenchSummaryRow summary_rows[16];
+    int summary_count = 0;
+
+    FILE *f_csv = NULL;
+    if (cfg->csv_path[0]) {
+        ensure_parent_dir_exists(cfg->csv_path);
+        f_csv = fopen(cfg->csv_path, "w");
+        if (f_csv) {
+            fprintf(f_csv, "type,model,budget_sec,phase,pos_id,pos_name,root_visits,search_time_sec,iter_per_sec\n");
+        }
+    }
 
     for (int b = 0; b < cfg->bench_budget_count; b++) {
         double budget = cfg->bench_budgets[b];
 
-        // UCB1
-        Engine ucb1_eng = engine_create(ENGINE_TYPE_MCTS_UCB1);
-        EngineConfig u_cfg;
-        engine_config_init_default(&u_cfg);
-        u_cfg.mcts_time_budget = budget;
-        engine_apply_config(&ucb1_eng, ENGINE_TYPE_MCTS_UCB1, &u_cfg);
+        EngineType types[2] = { ENGINE_TYPE_MCTS_UCB1, ENGINE_TYPE_MCTS_PUCT };
+        for (int t = 0; t < 2; t++) {
+            EngineType eng_type = types[t];
+            const char *model_name = (eng_type == ENGINE_TYPE_MCTS_UCB1) ? "MCTS UCB1" : "MCTS PUCT";
 
-        double t0_u = cli_get_time();
-        ucb1_eng.get_move(ucb1_eng.internal_state, &start_game);
-        double dur_u = cli_get_time() - t0_u;
-        uint32_t visits_u = engine_mcts_ucb1_get_root_visits(ucb1_eng.internal_state);
-        uint32_t pool_u = engine_mcts_ucb1_get_node_count();
-        double ips_u = (dur_u > 0.0) ? (double)visits_u / dur_u : 0.0;
+            uint64_t open_visits = 0, mid_visits = 0, end_visits = 0;
+            double open_time = 0.0, mid_time = 0.0, end_time = 0.0;
 
-        printf("  MCTS UCB1 | %5.2fs | %10.3fs | %11u | %16u | %10.1f\n",
-               budget, dur_u, visits_u, pool_u, ips_u);
-        engine_destroy(&ucb1_eng);
+            for (int p = 0; p < 30; p++) {
+                const BenchPosition *bp = &s_bench_pos[p];
 
-        // PUCT
+                GameState pos_game;
+                memset(&pos_game, 0, sizeof(GameState));
+                pos_game.mode = MODE_CPUVSCPU;
+                pos_game.current_player = bp->to_move;
+                pos_game.board.white_men = bp->wm;
+                pos_game.board.white_kings = bp->wk;
+                pos_game.board.black_men = bp->bm;
+                pos_game.board.black_kings = bp->bk;
+                pos_game.hash = zobrist_compute_hash(&pos_game.board, bp->to_move);
+
+                Engine eng = engine_create(eng_type);
+                EngineConfig ec;
+                engine_config_init_default(&ec);
+                ec.mcts_time_budget = budget;
+                ec.puct_time_budget = budget;
+                ec.mcts_use_book = false; // Disable instant book to measure pure MCTS search on all positions
+                ec.puct_use_book = false;
+                ec.mcts_use_db = false;
+                ec.puct_use_db = false;
+                engine_apply_config(&eng, eng_type, &ec);
+
+                double t0 = cli_get_time();
+                eng.get_move(eng.internal_state, &pos_game);
+                double dur = cli_get_time() - t0;
+
+                uint32_t v = 0;
+                if (eng_type == ENGINE_TYPE_MCTS_UCB1) {
+                    v = engine_mcts_ucb1_get_root_visits(eng.internal_state);
+                } else {
+                    v = engine_mcts_puct_get_root_visits(eng.internal_state);
+                }
+                engine_destroy(&eng);
+
+                if (p < 10) {
+                    open_visits += v;
+                    open_time += dur;
+                } else if (p < 20) {
+                    mid_visits += v;
+                    mid_time += dur;
+                } else {
+                    end_visits += v;
+                    end_time += dur;
+                }
+
+                if (f_csv) {
+                    fprintf(f_csv, "detail,%s,%.2f,%s,%d,\"%s\",%u,%.4f,%.1f\n",
+                            model_name, budget, bp->phase, p + 1, bp->name, v, dur, (dur > 0.0) ? ((double)v / dur) : 0.0);
+                }
+            }
+
+            uint64_t total_visits = open_visits + mid_visits + end_visits;
+            double open_ips = (budget * 10.0 > 0.0) ? ((double)open_visits / (budget * 10.0)) : 0.0;
+            double mid_ips = (budget * 10.0 > 0.0) ? ((double)mid_visits / (budget * 10.0)) : 0.0;
+            double end_ips = (budget * 10.0 > 0.0) ? ((double)end_visits / (budget * 10.0)) : 0.0;
+            double overall_ips = (budget * 30.0 > 0.0) ? ((double)total_visits / (budget * 30.0)) : 0.0;
+
+            printf("  %-9s | %5.2fs | %14.1f   | %14.1f   | %14.1f   | %19.1f   | %19llu\n",
+                   model_name, budget, open_ips, mid_ips, end_ips, overall_ips, (unsigned long long)total_visits);
+
+            if (summary_count < 16) {
+                snprintf(summary_rows[summary_count].model, sizeof(summary_rows[summary_count].model), "%s", model_name);
+                summary_rows[summary_count].budget = budget;
+                summary_rows[summary_count].open_ips = open_ips;
+                summary_rows[summary_count].mid_ips = mid_ips;
+                summary_rows[summary_count].end_ips = end_ips;
+                summary_rows[summary_count].overall_ips = overall_ips;
+                summary_rows[summary_count].total_visits = total_visits;
+                summary_count++;
+            }
+
+            if (f_csv) {
+                fprintf(f_csv, "summary,%s,%.2f,ALL,0,\"Overall Mean\",%llu,%.4f,%.1f\n",
+                        model_name, budget, (unsigned long long)total_visits, budget * 30.0, overall_ips);
+            }
+        }
+    }
+    printf("------------------------------------------------------------------------------------------------------------------------\n\n");
+
+    if (f_csv) {
+        fclose(f_csv);
+        printf("Benchmark results exported to CSV: %s\n\n", cfg->csv_path);
+    }
+
+    return 0;
+}
+
+static int run_bench_game_mode(const CliConfig *cfg) {
+    printf("========================================================================================================\n");
+    printf("  Damascus - Full-Game Live Throughput Profiling (MCTS PUCT vs MCTS UCB1 across Game Phases)\n");
+    printf("========================================================================================================\n\n");
+
+    printf("Configuration:\n");
+    printf("  -> Match Format  : 1 Full Game per Time Budget (Sequential, Single-Threaded)\n");
+    printf("  -> White Player  : MCTS PUCT (Default Hyperparameters, Book/DB OFF)\n");
+    printf("  -> Black Player  : MCTS UCB1 (Default Hyperparameters, Book/DB OFF)\n");
+    printf("  -> Time Budgets  : ");
+    for (int b = 0; b < cfg->bench_budget_count; b++) {
+        printf("%.2fs%s", cfg->bench_budgets[b], (b == cfg->bench_budget_count - 1) ? "" : ", ");
+    }
+    printf("\n\n");
+
+    typedef struct {
+        double budget;
+        int total_plies;
+        const char *result_str;
+        // PUCT stats (White)
+        int p_open_plies;
+        uint64_t p_open_visits;
+        double p_open_time;
+        int p_mid_plies;
+        uint64_t p_mid_visits;
+        double p_mid_time;
+        int p_end_plies;
+        uint64_t p_end_visits;
+        double p_end_time;
+        // UCB1 stats (Black)
+        int u_open_plies;
+        uint64_t u_open_visits;
+        double u_open_time;
+        int u_mid_plies;
+        uint64_t u_mid_visits;
+        double u_mid_time;
+        int u_end_plies;
+        uint64_t u_end_visits;
+        double u_end_time;
+    } GameBenchResult;
+
+    GameBenchResult results[8];
+    memset(results, 0, sizeof(results));
+
+    FILE *f_csv = NULL;
+    if (cfg->csv_path[0] != '\0') {
+        ensure_parent_dir_exists(cfg->csv_path);
+        f_csv = fopen(cfg->csv_path, "w");
+        if (f_csv) {
+            fprintf(f_csv, "type,budget_sec,ply,player,engine,phase,piece_count,visits,search_time_sec,iter_per_sec,move\n");
+        }
+    }
+
+    for (int b = 0; b < cfg->bench_budget_count; b++) {
+        double budget = cfg->bench_budgets[b];
+        printf(">>> Executing Full Game at Budget = %.2fs/move (PUCT vs UCB1) ...\n", budget);
+
+        GameState game;
+        game_init(&game, MODE_CPUVSCPU, PLAYER_WHITE, ENGINE_TYPE_MCTS_PUCT, ENGINE_TYPE_MCTS_UCB1);
+
         Engine puct_eng = engine_create(ENGINE_TYPE_MCTS_PUCT);
         EngineConfig p_cfg;
         engine_config_init_default(&p_cfg);
         p_cfg.puct_time_budget = budget;
+        p_cfg.puct_use_book = false;
+        p_cfg.puct_use_db = false;
         engine_apply_config(&puct_eng, ENGINE_TYPE_MCTS_PUCT, &p_cfg);
 
-        double t0_p = cli_get_time();
-        puct_eng.get_move(puct_eng.internal_state, &start_game);
-        double dur_p = cli_get_time() - t0_p;
-        uint32_t visits_p = engine_mcts_puct_get_root_visits(puct_eng.internal_state);
-        uint32_t pool_p = engine_mcts_puct_get_node_count();
-        double ips_p = (dur_p > 0.0) ? (double)visits_p / dur_p : 0.0;
+        Engine ucb1_eng = engine_create(ENGINE_TYPE_MCTS_UCB1);
+        EngineConfig u_cfg;
+        engine_config_init_default(&u_cfg);
+        u_cfg.mcts_time_budget = budget;
+        u_cfg.mcts_use_book = false;
+        u_cfg.mcts_use_db = false;
+        engine_apply_config(&ucb1_eng, ENGINE_TYPE_MCTS_UCB1, &u_cfg);
 
-        printf("  MCTS PUCT | %5.2fs | %10.3fs | %11u | %16u | %10.1f\n",
-               budget, dur_p, visits_p, pool_p, ips_p);
-        engine_destroy(&puct_eng);
-    }
-    printf("------------------------------------------------------------------------------\n\n");
+        results[b].budget = budget;
 
-    if (cfg->csv_path[0]) {
-        ensure_parent_dir_exists(cfg->csv_path);
-        FILE *f = fopen(cfg->csv_path, "w");
-        if (f) {
-            fprintf(f, "metric,model,budget_sec,time_elapsed_sec,visits_or_nodes,throughput_per_sec\n");
-            fprintf(f, "rollout,biased_FID,0,%.4f,%d,%.1f\n", t_biased, rollout_trials, (double)rollout_trials / t_biased);
-            fprintf(f, "rollout,uniform_random,0,%.4f,%d,%.1f\n", t_rand, rollout_trials, (double)rollout_trials / t_rand);
-            fclose(f);
-            printf("Benchmark results exported to CSV: %s\n", cfg->csv_path);
+        int ply = 0;
+        double game_start_t = cli_get_time();
+
+        while (!game.is_game_over && ply < 200) {
+            Player cur_p = game.current_player;
+            bool is_puct = (cur_p == PLAYER_WHITE);
+            Engine *cur_eng = is_puct ? &puct_eng : &ucb1_eng;
+            EngineType eng_type = is_puct ? ENGINE_TYPE_MCTS_PUCT : ENGINE_TYPE_MCTS_UCB1;
+            const char *eng_name = is_puct ? "MCTS PUCT" : "MCTS UCB1";
+
+            // Count total pieces on board
+            int total_pieces = __builtin_popcount(BOARD_ALL_PIECES(game.board));
+            const char *phase_str = (total_pieces >= 20 || ply < 16) ? "Opening" :
+                                    (total_pieces >= 8) ? "Midgame" : "Endgame";
+
+            double t0 = cli_get_time();
+            Move best_m = cur_eng->get_move(cur_eng->internal_state, &game);
+            double dur = cli_get_time() - t0;
+
+            uint32_t visits = 0;
+            if (eng_type == ENGINE_TYPE_MCTS_PUCT) {
+                visits = engine_mcts_puct_get_root_visits(cur_eng->internal_state);
+            } else {
+                visits = engine_mcts_ucb1_get_root_visits(cur_eng->internal_state);
+            }
+
+            double ips = (dur > 0.0) ? ((double)visits / dur) : 0.0;
+
+            if (strcmp(phase_str, "Opening") == 0) {
+                if (is_puct) {
+                    results[b].p_open_plies++;
+                    results[b].p_open_visits += visits;
+                    results[b].p_open_time += dur;
+                } else {
+                    results[b].u_open_plies++;
+                    results[b].u_open_visits += visits;
+                    results[b].u_open_time += dur;
+                }
+            } else if (strcmp(phase_str, "Midgame") == 0) {
+                if (is_puct) {
+                    results[b].p_mid_plies++;
+                    results[b].p_mid_visits += visits;
+                    results[b].p_mid_time += dur;
+                } else {
+                    results[b].u_mid_plies++;
+                    results[b].u_mid_visits += visits;
+                    results[b].u_mid_time += dur;
+                }
+            } else {
+                if (is_puct) {
+                    results[b].p_end_plies++;
+                    results[b].p_end_visits += visits;
+                    results[b].p_end_time += dur;
+                } else {
+                    results[b].u_end_plies++;
+                    results[b].u_end_visits += visits;
+                    results[b].u_end_time += dur;
+                }
+            }
+
+            char mv_buf[32] = "--";
+            if (!move_is_none(best_m)) {
+                snprintf(mv_buf, sizeof(mv_buf), "%02d%s%02d",
+                         best_m.from, best_m.is_cap ? "x" : "-", best_m.to);
+            }
+
+            if (f_csv) {
+                fprintf(f_csv, "ply,%.2f,%d,%s,%s,%s,%d,%u,%.4f,%.1f,\"%s\"\n",
+                        budget, ply + 1, (cur_p == PLAYER_WHITE) ? "White" : "Black",
+                        eng_name, phase_str, total_pieces, visits, dur, ips, mv_buf);
+            }
+
+            if (move_is_none(best_m) || !game_execute_move(&game, best_m)) {
+                break;
+            }
+            ply++;
         }
+
+        results[b].total_plies = ply;
+        if (game.is_draw) {
+            results[b].result_str = "Draw";
+        } else if (game.winner == PLAYER_WHITE) {
+            results[b].result_str = "PUCT Win (White)";
+        } else {
+            results[b].result_str = "UCB1 Win (Black)";
+        }
+
+        double game_dur = cli_get_time() - game_start_t;
+        printf("    -> Finished in %d plies (%.1fs). Result: %s\n\n",
+               ply, game_dur, results[b].result_str);
+
+        engine_destroy(&puct_eng);
+        engine_destroy(&ucb1_eng);
+    }
+
+    // Print Consolidated Summary Table
+    printf("========================================================================================================================\n");
+    printf("  FULL-GAME LIVE THROUGHPUT PROFILING RESULTS ACROSS PHASES (PUCT vs UCB1)\n");
+    printf("========================================================================================================================\n");
+    printf("  Budget | Model     | Opening (iter/s) | Midgame (iter/s) | Endgame (iter/s) | Game Mean (iter/s) | Plies (O / M / E)\n");
+    printf("---------+-----------+------------------+------------------+------------------+--------------------+--------------------\n");
+
+    for (int b = 0; b < cfg->bench_budget_count; b++) {
+        GameBenchResult *r = &results[b];
+
+        // PUCT
+        double p_op_ips = (r->p_open_time > 0.0) ? (double)r->p_open_visits / r->p_open_time : 0.0;
+        double p_mi_ips = (r->p_mid_time > 0.0) ? (double)r->p_mid_visits / r->p_mid_time : 0.0;
+        double p_en_ips = (r->p_end_time > 0.0) ? (double)r->p_end_visits / r->p_end_time : 0.0;
+        uint64_t p_tot_v = r->p_open_visits + r->p_mid_visits + r->p_end_visits;
+        double p_tot_t = r->p_open_time + r->p_mid_time + r->p_end_time;
+        double p_all_ips = (p_tot_t > 0.0) ? (double)p_tot_v / p_tot_t : 0.0;
+
+        printf("  %5.2fs | MCTS PUCT | %14.1f   | %14.1f   | %14.1f   | %16.1f   | %2d / %2d / %2d\n",
+               r->budget, p_op_ips, p_mi_ips, p_en_ips, p_all_ips,
+               r->p_open_plies, r->p_mid_plies, r->p_end_plies);
+
+        // UCB1
+        double u_op_ips = (r->u_open_time > 0.0) ? (double)r->u_open_visits / r->u_open_time : 0.0;
+        double u_mi_ips = (r->u_mid_time > 0.0) ? (double)r->u_mid_visits / r->u_mid_time : 0.0;
+        double u_en_ips = (r->u_end_time > 0.0) ? (double)r->u_end_visits / r->u_end_time : 0.0;
+        uint64_t u_tot_v = r->u_open_visits + r->u_mid_visits + r->u_end_visits;
+        double u_tot_t = r->u_open_time + r->u_mid_time + r->u_end_time;
+        double u_all_ips = (u_tot_t > 0.0) ? (double)u_tot_v / u_tot_t : 0.0;
+
+        printf("  %5.2fs | MCTS UCB1 | %14.1f   | %14.1f   | %14.1f   | %16.1f   | %2d / %2d / %2d\n",
+               r->budget, u_op_ips, u_mi_ips, u_en_ips, u_all_ips,
+               r->u_open_plies, r->u_mid_plies, r->u_end_plies);
+
+        if (b < cfg->bench_budget_count - 1) {
+            printf("---------+-----------+------------------+------------------+------------------+--------------------+--------------------\n");
+        }
+
+        if (f_csv) {
+            fprintf(f_csv, "summary,%.2f,0,White,MCTS PUCT,Opening,0,%llu,%.4f,%.1f,\"%d plies\"\n",
+                    r->budget, (unsigned long long)r->p_open_visits, r->p_open_time, p_op_ips, r->p_open_plies);
+            fprintf(f_csv, "summary,%.2f,0,White,MCTS PUCT,Midgame,0,%llu,%.4f,%.1f,\"%d plies\"\n",
+                    r->budget, (unsigned long long)r->p_mid_visits, r->p_mid_time, p_mi_ips, r->p_mid_plies);
+            fprintf(f_csv, "summary,%.2f,0,White,MCTS PUCT,Endgame,0,%llu,%.4f,%.1f,\"%d plies\"\n",
+                    r->budget, (unsigned long long)r->p_end_visits, r->p_end_time, p_en_ips, r->p_end_plies);
+            fprintf(f_csv, "summary,%.2f,0,White,MCTS PUCT,ALL,0,%llu,%.4f,%.1f,\"Overall\"\n",
+                    r->budget, (unsigned long long)p_tot_v, p_tot_t, p_all_ips);
+
+            fprintf(f_csv, "summary,%.2f,0,Black,MCTS UCB1,Opening,0,%llu,%.4f,%.1f,\"%d plies\"\n",
+                    r->budget, (unsigned long long)r->u_open_visits, r->u_open_time, u_op_ips, r->u_open_plies);
+            fprintf(f_csv, "summary,%.2f,0,Black,MCTS UCB1,Midgame,0,%llu,%.4f,%.1f,\"%d plies\"\n",
+                    r->budget, (unsigned long long)r->u_mid_visits, r->u_mid_time, u_mi_ips, r->u_mid_plies);
+            fprintf(f_csv, "summary,%.2f,0,Black,MCTS UCB1,Endgame,0,%llu,%.4f,%.1f,\"%d plies\"\n",
+                    r->budget, (unsigned long long)r->u_end_visits, r->u_end_time, u_en_ips, r->u_end_plies);
+            fprintf(f_csv, "summary,%.2f,0,Black,MCTS UCB1,ALL,0,%llu,%.4f,%.1f,\"Overall\"\n",
+                    r->budget, (unsigned long long)u_tot_v, u_tot_t, u_all_ips);
+        }
+    }
+    printf("========================================================================================================================\n\n");
+
+    if (f_csv) {
+        fclose(f_csv);
+        printf("Full-game benchmark results exported to CSV: %s\n\n", cfg->csv_path);
     }
 
     return 0;
@@ -2182,6 +2559,8 @@ int cli_run(int argc, char **argv) {
             return run_tune_ga_mode(&cfg);
         case CLI_MODE_BENCH:
             return run_benchmark_mode(&cfg);
+        case CLI_MODE_BENCH_GAME:
+            return run_bench_game_mode(&cfg);
         case CLI_MODE_TEST_ENDGAMES:
             return run_test_endgames_mode(&cfg);
         case CLI_MODE_TEST_OPENING_BOOK:
