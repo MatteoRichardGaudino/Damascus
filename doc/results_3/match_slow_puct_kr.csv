@@ -1,0 +1,11 @@
+game_id,white_engine,black_engine,time_budget,winner_color,winner_engine,is_draw,reason,plies,white_avg_ms,black_avg_ms,duration_sec,white_pieces,black_pieces
+1,MCTS_PUCT (No-DB),Kingsrow,3.000,Black,Kingsrow,0,"Elimination / Block",66,1761.33,2087.10,123.153,0,3
+2,Kingsrow,MCTS_PUCT (No-DB),3.000,White,Kingsrow,0,"Elimination / Block",75,2424.75,1827.42,155.507,1,1
+3,MCTS_PUCT (No-DB),Kingsrow,3.000,Black,Kingsrow,0,"Elimination / Block",112,1840.93,2736.18,251.747,0,3
+4,Kingsrow,MCTS_PUCT (No-DB),3.000,White,Kingsrow,0,"Elimination / Block",143,2458.25,1600.68,286.592,2,0
+5,MCTS_PUCT (No-DB),Kingsrow,3.000,Draw,Draw,1,"3-Fold Repetition",232,2010.51,550.20,294.496,1,1
+6,Kingsrow,MCTS_PUCT (No-DB),3.000,White,Kingsrow,0,"Elimination / Block",81,2470.39,2063.05,179.280,4,1
+7,MCTS_PUCT (No-DB),Kingsrow,3.000,Black,Kingsrow,0,"Elimination / Block",100,1844.03,1967.25,186.759,0,2
+8,Kingsrow,MCTS_PUCT (No-DB),3.000,White,Kingsrow,0,"Elimination / Block",107,2471.63,1915.61,230.614,2,0
+9,MCTS_PUCT (No-DB),Kingsrow,3.000,Draw,Draw,1,"Max Plies Limit (250)",250,1809.67,458.07,281.211,1,1
+10,Kingsrow,MCTS_PUCT (No-DB),3.000,Draw,Draw,1,"Max Plies Limit (250)",250,386.81,1515.38,235.884,2,2

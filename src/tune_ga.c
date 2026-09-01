@@ -139,21 +139,60 @@ void ga_config_init_default(GAConfig *cfg, EngineType target_engine) {
     cfg->seed = (uint32_t)time(NULL);
 }
 
+void ga_chromosome_sanitize(Chromosome *c) {
+    if (!c) return;
+
+    if (c->target_engine == ENGINE_TYPE_MCTS_UCB1) {
+        // Zero unused PUCT genome parameters
+        if (c->ucb1.book_mode == BOOK_MODE_OFF || c->ucb1.book_mode == BOOK_MODE_BEST) {
+            c->ucb1.book_temperature = 0.0f;
+        }
+    } else {
+        // PUCT genome sanitization
+        if (c->puct.use_guided_book) {
+            c->puct.book_mode = BOOK_MODE_OFF;
+            c->puct.book_temperature = 0.0f;
+            if (c->puct.lambda_book < 0.0f) c->puct.lambda_book = 0.0f;
+            if (c->puct.lambda_book > 1.0f) c->puct.lambda_book = 1.0f;
+        } else {
+            c->puct.lambda_book = 0.0f;
+            if (c->puct.book_mode == BOOK_MODE_OFF || c->puct.book_mode == BOOK_MODE_BEST) {
+                c->puct.book_temperature = 0.0f;
+            }
+        }
+    }
+}
+
 void ga_chromosome_init_default(Chromosome *c, EngineType target_engine) {
     if (!c) return;
     memset(c, 0, sizeof(Chromosome));
     c->target_engine = target_engine;
     
-    // Baseline defaults
-    c->puct_c_puct = 1.5f;
-    c->puct_temperature = 1.0f;
-    c->mcts_exploration = 1.41421356f;
+    // Common baseline defaults
     c->rollout_epsilon = 0.15f;
     c->max_rollout_depth = 70;
-    c->book_temperature = 1.0f;
-    c->book_mode = BOOK_MODE_PUCT_GUIDED;
-    c->use_book = true;
     c->use_db = true;
+
+    if (target_engine == ENGINE_TYPE_MCTS_UCB1) {
+        c->ucb1.exploration_alpha = 0.6422f;
+        c->ucb1.book_mode = BOOK_MODE_GOOD;
+        c->ucb1.book_temperature = 0.0500f;
+        c->max_rollout_depth = 51;
+        c->rollout_epsilon = 0.3128f;
+        c->use_db = false;
+    } else {
+        c->puct.c_puct = 2.5857f;
+        c->puct.puct_temperature = 2.2048f;
+        c->puct.use_guided_book = true;
+        c->puct.lambda_book = 0.0791f;
+        c->puct.book_mode = BOOK_MODE_OFF;
+        c->puct.book_temperature = 0.0f;
+        c->max_rollout_depth = 112;
+        c->rollout_epsilon = 0.3416f;
+        c->use_db = false;
+    }
+
+    ga_chromosome_sanitize(c);
 }
 
 void ga_chromosome_randomize(Chromosome *c, EngineType target_engine, uint32_t *rng) {
@@ -161,68 +200,98 @@ void ga_chromosome_randomize(Chromosome *c, EngineType target_engine, uint32_t *
     memset(c, 0, sizeof(Chromosome));
     c->target_engine = target_engine;
     
-    c->puct_c_puct = ga_rand_range(0.5f, 3.5f, rng);
-    c->puct_temperature = ga_rand_range(0.1f, 2.5f, rng);
-    c->mcts_exploration = ga_rand_range(0.2f, 3.0f, rng);
+    // Common genes
     c->rollout_epsilon = ga_rand_range(0.02f, 0.45f, rng);
     c->max_rollout_depth = ga_rand_int_range(20, 150, rng);
-    c->book_temperature = ga_rand_range(0.1f, 2.5f, rng);
-    
-    int bm = ga_rand_int_range(0, 3, rng);
-    switch (bm) {
-        case 0: c->book_mode = BOOK_MODE_BEST; break;
-        case 1: c->book_mode = BOOK_MODE_GOOD; break;
-        case 2: c->book_mode = BOOK_MODE_PUCT_GUIDED; break;
-        case 3: default: c->book_mode = BOOK_MODE_ALL; break;
-    }
-    
-    c->use_book = (ga_rand_float(rng) > 0.10f); // 90% chance true
     c->use_db = (ga_rand_float(rng) > 0.05f);   // 95% chance true
+
+    if (target_engine == ENGINE_TYPE_MCTS_UCB1) {
+        c->ucb1.exploration_alpha = ga_rand_range(0.2f, 3.0f, rng);
+        int bm = ga_rand_int_range(0, 3, rng);
+        c->ucb1.book_mode = (BookPlayMode)bm;
+        if (c->ucb1.book_mode == BOOK_MODE_GOOD || c->ucb1.book_mode == BOOK_MODE_ALL) {
+            c->ucb1.book_temperature = ga_rand_range(0.1f, 2.5f, rng);
+        } else {
+            c->ucb1.book_temperature = 0.0f;
+        }
+    } else {
+        c->puct.c_puct = ga_rand_range(0.5f, 4.0f, rng);
+        c->puct.puct_temperature = ga_rand_range(0.1f, 2.5f, rng);
+        c->puct.use_guided_book = (ga_rand_float(rng) > 0.30f); // 70% chance guided
+        if (c->puct.use_guided_book) {
+            c->puct.lambda_book = ga_rand_range(0.10f, 0.95f, rng);
+            c->puct.book_mode = BOOK_MODE_OFF;
+            c->puct.book_temperature = 0.0f;
+        } else {
+            c->puct.lambda_book = 0.0f;
+            int bm = ga_rand_int_range(0, 3, rng);
+            c->puct.book_mode = (BookPlayMode)bm;
+            if (c->puct.book_mode == BOOK_MODE_GOOD || c->puct.book_mode == BOOK_MODE_ALL) {
+                c->puct.book_temperature = ga_rand_range(0.1f, 2.5f, rng);
+            } else {
+                c->puct.book_temperature = 0.0f;
+            }
+        }
+    }
     
     ga_chromosome_clamp(c);
 }
 
 void ga_chromosome_clamp(Chromosome *c) {
     if (!c) return;
-    if (c->puct_c_puct < 0.2f) c->puct_c_puct = 0.2f;
-    if (c->puct_c_puct > 5.0f) c->puct_c_puct = 5.0f;
     
-    if (c->puct_temperature < 0.05f) c->puct_temperature = 0.05f;
-    if (c->puct_temperature > 3.0f) c->puct_temperature = 3.0f;
-    
-    if (c->mcts_exploration < 0.1f) c->mcts_exploration = 0.1f;
-    if (c->mcts_exploration > 4.0f) c->mcts_exploration = 4.0f;
-    
+    // Common genes clamp
     if (c->rollout_epsilon < 0.01f) c->rollout_epsilon = 0.01f;
-    if (c->rollout_epsilon > 0.90f) c->rollout_epsilon = 0.90f;
+    if (c->rollout_epsilon > 0.50f) c->rollout_epsilon = 0.50f;
     
     if (c->max_rollout_depth < 10) c->max_rollout_depth = 10;
-    if (c->max_rollout_depth > 200) c->max_rollout_depth = 200;
-    
-    if (c->book_temperature < 0.05f) c->book_temperature = 0.05f;
-    if (c->book_temperature > 4.0f) c->book_temperature = 4.0f;
+    if (c->max_rollout_depth > 150) c->max_rollout_depth = 150;
+
+    if (c->target_engine == ENGINE_TYPE_MCTS_UCB1) {
+        if (c->ucb1.exploration_alpha < 0.1f) c->ucb1.exploration_alpha = 0.1f;
+        if (c->ucb1.exploration_alpha > 4.0f) c->ucb1.exploration_alpha = 4.0f;
+        
+        if (c->ucb1.book_temperature < 0.05f) c->ucb1.book_temperature = 0.05f;
+        if (c->ucb1.book_temperature > 4.0f) c->ucb1.book_temperature = 4.0f;
+    } else {
+        if (c->puct.c_puct < 0.2f) c->puct.c_puct = 0.2f;
+        if (c->puct.c_puct > 5.0f) c->puct.c_puct = 5.0f;
+        
+        if (c->puct.puct_temperature < 0.05f) c->puct.puct_temperature = 0.05f;
+        if (c->puct.puct_temperature > 3.0f) c->puct.puct_temperature = 3.0f;
+        
+        if (c->puct.lambda_book < 0.0f) c->puct.lambda_book = 0.0f;
+        if (c->puct.lambda_book > 1.0f) c->puct.lambda_book = 1.0f;
+        
+        if (c->puct.book_temperature < 0.05f) c->puct.book_temperature = 0.05f;
+        if (c->puct.book_temperature > 4.0f) c->puct.book_temperature = 4.0f;
+    }
+
+    ga_chromosome_sanitize(c);
 }
 
 void ga_chromosome_apply_to_config(const Chromosome *c, EngineConfig *cfg) {
     if (!c || !cfg) return;
     
     if (c->target_engine == ENGINE_TYPE_MCTS_PUCT) {
-        cfg->puct_c_puct = c->puct_c_puct;
-        cfg->puct_temperature = c->puct_temperature;
+        cfg->puct_c_puct = c->puct.c_puct;
+        cfg->puct_temperature = c->puct.puct_temperature;
         cfg->puct_rollout_epsilon = c->rollout_epsilon;
         cfg->puct_max_rollout_depth = c->max_rollout_depth;
-        cfg->puct_use_book = c->use_book;
         cfg->puct_use_db = c->use_db;
-        cfg->book_mode = c->book_mode;
-        cfg->book_temperature = c->book_temperature;
+        cfg->puct_use_guided_book = c->puct.use_guided_book;
+        cfg->puct_lambda_book = c->puct.lambda_book;
+        cfg->puct_use_book = (!c->puct.use_guided_book) && (c->puct.book_mode != BOOK_MODE_OFF);
+        cfg->book_mode = c->puct.use_guided_book ? BOOK_MODE_OFF : c->puct.book_mode;
+        cfg->book_temperature = c->puct.book_temperature;
     } else {
-        cfg->mcts_exploration = c->mcts_exploration;
+        cfg->mcts_exploration = c->ucb1.exploration_alpha;
         cfg->mcts_rollout_epsilon = c->rollout_epsilon;
         cfg->mcts_max_rollout_depth = c->max_rollout_depth;
-        cfg->mcts_use_book = c->use_book;
         cfg->mcts_use_db = c->use_db;
-        cfg->book_mode = c->book_mode;
-        cfg->book_temperature = c->book_temperature;
+        cfg->mcts_use_book = (c->ucb1.book_mode != BOOK_MODE_OFF);
+        cfg->book_mode = c->ucb1.book_mode;
+        cfg->book_temperature = c->ucb1.book_temperature;
     }
 }
 
@@ -245,21 +314,7 @@ void ga_chromosome_crossover(const Chromosome *p1, const Chromosome *p2, Chromos
         return; // No crossover, cloned
     }
 
-    // Arithmetic blend crossover for continuous genes
-    float alpha = ga_rand_range(-0.1f, 1.1f, rng);
-    float beta  = ga_rand_range(-0.1f, 1.1f, rng);
-
-    if (p1->target_engine == ENGINE_TYPE_MCTS_PUCT) {
-        child1->puct_c_puct = alpha * p1->puct_c_puct + (1.0f - alpha) * p2->puct_c_puct;
-        child2->puct_c_puct = (1.0f - alpha) * p1->puct_c_puct + alpha * p2->puct_c_puct;
-        
-        child1->puct_temperature = beta * p1->puct_temperature + (1.0f - beta) * p2->puct_temperature;
-        child2->puct_temperature = (1.0f - beta) * p1->puct_temperature + beta * p2->puct_temperature;
-    } else {
-        child1->mcts_exploration = alpha * p1->mcts_exploration + (1.0f - alpha) * p2->mcts_exploration;
-        child2->mcts_exploration = (1.0f - alpha) * p1->mcts_exploration + alpha * p2->mcts_exploration;
-    }
-
+    // Common continuous genes arithmetic blend
     float gamma = ga_rand_range(-0.1f, 1.1f, rng);
     child1->rollout_epsilon = gamma * p1->rollout_epsilon + (1.0f - gamma) * p2->rollout_epsilon;
     child2->rollout_epsilon = (1.0f - gamma) * p1->rollout_epsilon + gamma * p2->rollout_epsilon;
@@ -268,19 +323,44 @@ void ga_chromosome_crossover(const Chromosome *p1, const Chromosome *p2, Chromos
     child1->max_rollout_depth = (int)(delta * (float)p1->max_rollout_depth + (1.0f - delta) * (float)p2->max_rollout_depth + 0.5f);
     child2->max_rollout_depth = (int)((1.0f - delta) * (float)p1->max_rollout_depth + delta * (float)p2->max_rollout_depth + 0.5f);
 
-    float eta = ga_rand_range(-0.1f, 1.1f, rng);
-    child1->book_temperature = eta * p1->book_temperature + (1.0f - eta) * p2->book_temperature;
-    child2->book_temperature = (1.0f - eta) * p1->book_temperature + eta * p2->book_temperature;
-
-    // Discrete crossover
-    child1->book_mode = (ga_rand_float(rng) < 0.5f) ? p1->book_mode : p2->book_mode;
-    child2->book_mode = (ga_rand_float(rng) < 0.5f) ? p2->book_mode : p1->book_mode;
-
-    child1->use_book = (ga_rand_float(rng) < 0.5f) ? p1->use_book : p2->use_book;
-    child2->use_book = (ga_rand_float(rng) < 0.5f) ? p2->use_book : p1->use_book;
-
     child1->use_db = (ga_rand_float(rng) < 0.5f) ? p1->use_db : p2->use_db;
     child2->use_db = (ga_rand_float(rng) < 0.5f) ? p2->use_db : p1->use_db;
+
+    if (p1->target_engine == ENGINE_TYPE_MCTS_UCB1) {
+        float alpha = ga_rand_range(-0.1f, 1.1f, rng);
+        child1->ucb1.exploration_alpha = alpha * p1->ucb1.exploration_alpha + (1.0f - alpha) * p2->ucb1.exploration_alpha;
+        child2->ucb1.exploration_alpha = (1.0f - alpha) * p1->ucb1.exploration_alpha + alpha * p2->ucb1.exploration_alpha;
+
+        child1->ucb1.book_mode = (ga_rand_float(rng) < 0.5f) ? p1->ucb1.book_mode : p2->ucb1.book_mode;
+        child2->ucb1.book_mode = (ga_rand_float(rng) < 0.5f) ? p2->ucb1.book_mode : p1->ucb1.book_mode;
+
+        float eta = ga_rand_range(-0.1f, 1.1f, rng);
+        child1->ucb1.book_temperature = eta * p1->ucb1.book_temperature + (1.0f - eta) * p2->ucb1.book_temperature;
+        child2->ucb1.book_temperature = (1.0f - eta) * p1->ucb1.book_temperature + eta * p2->ucb1.book_temperature;
+    } else {
+        float alpha = ga_rand_range(-0.1f, 1.1f, rng);
+        float beta  = ga_rand_range(-0.1f, 1.1f, rng);
+
+        child1->puct.c_puct = alpha * p1->puct.c_puct + (1.0f - alpha) * p2->puct.c_puct;
+        child2->puct.c_puct = (1.0f - alpha) * p1->puct.c_puct + alpha * p2->puct.c_puct;
+        
+        child1->puct.puct_temperature = beta * p1->puct.puct_temperature + (1.0f - beta) * p2->puct.puct_temperature;
+        child2->puct.puct_temperature = (1.0f - beta) * p1->puct.puct_temperature + beta * p2->puct.puct_temperature;
+
+        child1->puct.use_guided_book = (ga_rand_float(rng) < 0.5f) ? p1->puct.use_guided_book : p2->puct.use_guided_book;
+        child2->puct.use_guided_book = (ga_rand_float(rng) < 0.5f) ? p2->puct.use_guided_book : p1->puct.use_guided_book;
+
+        float lam = ga_rand_range(-0.1f, 1.1f, rng);
+        child1->puct.lambda_book = lam * p1->puct.lambda_book + (1.0f - lam) * p2->puct.lambda_book;
+        child2->puct.lambda_book = (1.0f - lam) * p1->puct.lambda_book + lam * p2->puct.lambda_book;
+
+        child1->puct.book_mode = (ga_rand_float(rng) < 0.5f) ? p1->puct.book_mode : p2->puct.book_mode;
+        child2->puct.book_mode = (ga_rand_float(rng) < 0.5f) ? p2->puct.book_mode : p1->puct.book_mode;
+
+        float eta = ga_rand_range(-0.1f, 1.1f, rng);
+        child1->puct.book_temperature = eta * p1->puct.book_temperature + (1.0f - eta) * p2->puct.book_temperature;
+        child2->puct.book_temperature = (1.0f - eta) * p1->puct.book_temperature + eta * p2->puct.book_temperature;
+    }
 
     ga_chromosome_clamp(child1);
     ga_chromosome_clamp(child2);
@@ -289,43 +369,56 @@ void ga_chromosome_crossover(const Chromosome *p1, const Chromosome *p2, Chromos
 void ga_chromosome_mutate(Chromosome *c, float mutation_rate, float mutation_scale, uint32_t *rng) {
     if (!c) return;
 
-    if (c->target_engine == ENGINE_TYPE_MCTS_PUCT) {
-        if (ga_rand_float(rng) < mutation_rate) {
-            c->puct_c_puct += (ga_rand_float(rng) * 2.0f - 1.0f) * mutation_scale * 3.0f;
-        }
-        if (ga_rand_float(rng) < mutation_rate) {
-            c->puct_temperature += (ga_rand_float(rng) * 2.0f - 1.0f) * mutation_scale * 2.0f;
-        }
-    } else {
-        if (ga_rand_float(rng) < mutation_rate) {
-            c->mcts_exploration += (ga_rand_float(rng) * 2.0f - 1.0f) * mutation_scale * 2.5f;
-        }
-    }
-
+    // Common genes mutation
     if (ga_rand_float(rng) < mutation_rate) {
         c->rollout_epsilon += (ga_rand_float(rng) * 2.0f - 1.0f) * mutation_scale * 0.40f;
     }
     if (ga_rand_float(rng) < mutation_rate) {
         c->max_rollout_depth += (int)((ga_rand_float(rng) * 2.0f - 1.0f) * mutation_scale * 80.0f);
     }
-    if (ga_rand_float(rng) < mutation_rate) {
-        c->book_temperature += (ga_rand_float(rng) * 2.0f - 1.0f) * mutation_scale * 2.0f;
-    }
-
-    if (ga_rand_float(rng) < mutation_rate * 0.5f) {
-        int bm = ga_rand_int_range(0, 3, rng);
-        switch (bm) {
-            case 0: c->book_mode = BOOK_MODE_BEST; break;
-            case 1: c->book_mode = BOOK_MODE_GOOD; break;
-            case 2: c->book_mode = BOOK_MODE_PUCT_GUIDED; break;
-            case 3: default: c->book_mode = BOOK_MODE_ALL; break;
-        }
-    }
-    if (ga_rand_float(rng) < mutation_rate * 0.3f) {
-        c->use_book = !c->use_book;
-    }
     if (ga_rand_float(rng) < mutation_rate * 0.2f) {
         c->use_db = !c->use_db;
+    }
+
+    if (c->target_engine == ENGINE_TYPE_MCTS_UCB1) {
+        if (ga_rand_float(rng) < mutation_rate) {
+            c->ucb1.exploration_alpha += (ga_rand_float(rng) * 2.0f - 1.0f) * mutation_scale * 2.5f;
+        }
+        if (ga_rand_float(rng) < mutation_rate * 0.5f) {
+            c->ucb1.book_mode = (BookPlayMode)ga_rand_int_range(0, 3, rng);
+        }
+        // Mutate book_temperature ONLY if book_mode is GOOD or ALL
+        if (c->ucb1.book_mode == BOOK_MODE_GOOD || c->ucb1.book_mode == BOOK_MODE_ALL) {
+            if (ga_rand_float(rng) < mutation_rate) {
+                c->ucb1.book_temperature += (ga_rand_float(rng) * 2.0f - 1.0f) * mutation_scale * 2.0f;
+            }
+        }
+    } else {
+        if (ga_rand_float(rng) < mutation_rate) {
+            c->puct.c_puct += (ga_rand_float(rng) * 2.0f - 1.0f) * mutation_scale * 3.0f;
+        }
+        if (ga_rand_float(rng) < mutation_rate) {
+            c->puct.puct_temperature += (ga_rand_float(rng) * 2.0f - 1.0f) * mutation_scale * 2.0f;
+        }
+        if (ga_rand_float(rng) < mutation_rate * 0.3f) {
+            c->puct.use_guided_book = !c->puct.use_guided_book;
+        }
+        if (c->puct.use_guided_book) {
+            // Mutate lambda_book ONLY if guided blending is active
+            if (ga_rand_float(rng) < mutation_rate) {
+                c->puct.lambda_book += (ga_rand_float(rng) * 2.0f - 1.0f) * mutation_scale * 0.5f;
+            }
+        } else {
+            // Mutate instant book parameters ONLY if guided blending is OFF
+            if (ga_rand_float(rng) < mutation_rate * 0.5f) {
+                c->puct.book_mode = (BookPlayMode)ga_rand_int_range(0, 3, rng);
+            }
+            if (c->puct.book_mode == BOOK_MODE_GOOD || c->puct.book_mode == BOOK_MODE_ALL) {
+                if (ga_rand_float(rng) < mutation_rate) {
+                    c->puct.book_temperature += (ga_rand_float(rng) * 2.0f - 1.0f) * mutation_scale * 2.0f;
+                }
+            }
+        }
     }
 
     ga_chromosome_clamp(c);
@@ -364,24 +457,25 @@ static void ga_apply_chromosome_to_engine(const Chromosome *chr, EngineType type
     if (!chr || !engine_state) return;
     if (type == ENGINE_TYPE_MCTS_PUCT) {
         engine_mcts_puct_set_time_budget(engine_state, time_budget);
-        engine_mcts_puct_set_c_puct(engine_state, chr->puct_c_puct);
-        engine_mcts_puct_set_temperature(engine_state, chr->puct_temperature);
+        engine_mcts_puct_set_c_puct(engine_state, chr->puct.c_puct);
+        engine_mcts_puct_set_temperature(engine_state, chr->puct.puct_temperature);
         engine_mcts_puct_set_max_rollout_depth(engine_state, chr->max_rollout_depth);
         engine_mcts_puct_set_rollout_epsilon(engine_state, chr->rollout_epsilon);
         engine_mcts_puct_set_use_db(engine_state, chr->use_db);
-        engine_mcts_puct_set_use_book(engine_state, chr->use_book && (chr->book_mode != BOOK_MODE_OFF));
-        engine_mcts_puct_set_book_mode(engine_state, chr->book_mode);
-        engine_mcts_puct_set_book_temperature(engine_state, chr->book_temperature);
+        engine_mcts_puct_set_guided_book(engine_state, chr->puct.use_guided_book, chr->puct.lambda_book);
+        engine_mcts_puct_set_use_book(engine_state, (!chr->puct.use_guided_book) && (chr->puct.book_mode != BOOK_MODE_OFF));
+        engine_mcts_puct_set_book_mode(engine_state, chr->puct.use_guided_book ? BOOK_MODE_OFF : chr->puct.book_mode);
+        engine_mcts_puct_set_book_temperature(engine_state, chr->puct.book_temperature);
         engine_mcts_puct_set_debug_log(engine_state, false);
     } else if (type == ENGINE_TYPE_MCTS_UCB1) {
         engine_mcts_ucb1_set_time_budget(engine_state, time_budget);
-        engine_mcts_ucb1_set_exploration(engine_state, chr->mcts_exploration);
+        engine_mcts_ucb1_set_exploration(engine_state, chr->ucb1.exploration_alpha);
         engine_mcts_ucb1_set_max_rollout_depth(engine_state, chr->max_rollout_depth);
         engine_mcts_ucb1_set_rollout_epsilon(engine_state, chr->rollout_epsilon);
         engine_mcts_ucb1_set_use_db(engine_state, chr->use_db);
-        engine_mcts_ucb1_set_use_book(engine_state, chr->use_book && (chr->book_mode != BOOK_MODE_OFF));
-        engine_mcts_ucb1_set_book_mode(engine_state, chr->book_mode);
-        engine_mcts_ucb1_set_book_temperature(engine_state, chr->book_temperature);
+        engine_mcts_ucb1_set_use_book(engine_state, chr->ucb1.book_mode != BOOK_MODE_OFF);
+        engine_mcts_ucb1_set_book_mode(engine_state, chr->ucb1.book_mode);
+        engine_mcts_ucb1_set_book_temperature(engine_state, chr->ucb1.book_temperature);
         engine_mcts_ucb1_set_debug_log(engine_state, false);
     }
 }
@@ -741,30 +835,37 @@ static void ga_print_generation_summary(const Population *pop, const GAConfig *c
            pop->generation + 1, engine_get_type_name(cfg->target_engine), pop->size, cfg->time_budget);
     printf("+------+-------+---------+--------+--------+-------+--------------------------------------------------+\n");
     if (cfg->target_engine == ENGINE_TYPE_MCTS_PUCT) {
-        printf("| Rank | Id    | Score %% | Points | W/D/L  | Elo   | c_puct | tau  | eps_roll | depth | book_mode  | db  |\n");
+        printf("| Rank | Id    | Score %% | Points | W/D/L  | Elo   | c_puct | tau  | eps_roll | depth | guided | lambda/book | db  |\n");
     } else {
-        printf("| Rank | Id    | Score %% | Points | W/D/L  | Elo   | alpha  | eps_roll | depth | book_tau | book_mode | db  |\n");
+        printf("| Rank | Id    | Score %% | Points | W/D/L  | Elo   | alpha  | eps_roll | depth | book_mode | book_tau | db  |\n");
     }
     printf("+------+-------+---------+--------+--------+-------+--------------------------------------------------+\n");
 
     int display_count = pop->size > 8 ? 8 : pop->size;
     for (int r = 0; r < display_count; r++) {
         const Chromosome *c = &pop->individuals[r];
-        const char *bm_str = (c->book_mode == BOOK_MODE_BEST) ? "BEST" :
-                             (c->book_mode == BOOK_MODE_GOOD) ? "GOOD" :
-                             (c->book_mode == BOOK_MODE_PUCT_GUIDED) ? "PUCT" : "ALL";
-        if (!c->use_book) bm_str = "OFF";
-
         if (cfg->target_engine == ENGINE_TYPE_MCTS_PUCT) {
-            printf("| #%-3d | #%-4d | %5.1f%%  | %5.1f  | %2d/%2d/%-2d | %5.0f | %6.2f | %4.2f| %8.2f | %5d | %-10s | %-3s |\n",
+            char book_info[24];
+            if (c->puct.use_guided_book) {
+                snprintf(book_info, sizeof(book_info), "lam=%.2f", c->puct.lambda_book);
+            } else {
+                const char *bm_str = (c->puct.book_mode == BOOK_MODE_BEST) ? "BEST" :
+                                     (c->puct.book_mode == BOOK_MODE_GOOD) ? "GOOD" :
+                                     (c->puct.book_mode == BOOK_MODE_ALL) ? "ALL" : "OFF";
+                snprintf(book_info, sizeof(book_info), "%s (t=%.1f)", bm_str, c->puct.book_temperature);
+            }
+            printf("| #%-3d | #%-4d | %5.1f%%  | %5.1f  | %2d/%2d/%-2d | %5.0f | %6.2f | %4.2f| %8.2f | %5d | %-6s | %-11s | %-3s |\n",
                    r + 1, c->id, c->score_pct, c->points, c->wins, c->draws, c->losses, c->elo,
-                   c->puct_c_puct, c->puct_temperature, c->rollout_epsilon, c->max_rollout_depth,
-                   bm_str, c->use_db ? "ON" : "OFF");
+                   c->puct.c_puct, c->puct.puct_temperature, c->rollout_epsilon, c->max_rollout_depth,
+                   c->puct.use_guided_book ? "ON" : "OFF", book_info, c->use_db ? "ON" : "OFF");
         } else {
-            printf("| #%-3d | #%-4d | %5.1f%%  | %5.1f  | %2d/%2d/%-2d | %5.0f | %6.2f | %8.2f | %5d | %8.2f | %-9s | %-3s |\n",
+            const char *bm_str = (c->ucb1.book_mode == BOOK_MODE_BEST) ? "BEST" :
+                                 (c->ucb1.book_mode == BOOK_MODE_GOOD) ? "GOOD" :
+                                 (c->ucb1.book_mode == BOOK_MODE_ALL) ? "ALL" : "OFF";
+            printf("| #%-3d | #%-4d | %5.1f%%  | %5.1f  | %2d/%2d/%-2d | %5.0f | %6.2f | %8.2f | %5d | %-9s | %8.2f | %-3s |\n",
                    r + 1, c->id, c->score_pct, c->points, c->wins, c->draws, c->losses, c->elo,
-                   c->mcts_exploration, c->rollout_epsilon, c->max_rollout_depth, c->book_temperature,
-                   bm_str, c->use_db ? "ON" : "OFF");
+                   c->ucb1.exploration_alpha, c->rollout_epsilon, c->max_rollout_depth,
+                   bm_str, c->ucb1.book_temperature, c->use_db ? "ON" : "OFF");
         }
     }
     printf("+------+-------+---------+--------+--------+-------+--------------------------------------------------+\n");
@@ -772,17 +873,26 @@ static void ga_print_generation_summary(const Population *pop, const GAConfig *c
 
 static void ga_export_csv_row(FILE *f, const Chromosome *c, int rank, const GAConfig *cfg) {
     if (!f || !c) return;
-    const char *bm_str = (c->book_mode == BOOK_MODE_BEST) ? "BEST" :
-                         (c->book_mode == BOOK_MODE_GOOD) ? "GOOD" :
-                         (c->book_mode == BOOK_MODE_PUCT_GUIDED) ? "PUCT_GUIDED" : "ALL";
 
-    fprintf(f, "%d,%d,%d,\"%s\",%.2f,%.1f,%d,%d,%d,%d,%.1f,%.4f,%.4f,%.4f,%.4f,%d,%.4f,\"%s\",%d,%d\n",
-            c->generation + 1, rank, c->id, engine_get_type_name(cfg->target_engine),
-            c->score_pct, c->points, c->games_played, c->wins, c->draws, c->losses, c->elo,
-            (cfg->target_engine == ENGINE_TYPE_MCTS_PUCT) ? c->puct_c_puct : c->mcts_exploration,
-            (cfg->target_engine == ENGINE_TYPE_MCTS_PUCT) ? c->puct_temperature : 0.0f,
-            c->rollout_epsilon, cfg->time_budget, c->max_rollout_depth, c->book_temperature,
-            bm_str, c->use_book ? 1 : 0, c->use_db ? 1 : 0);
+    if (cfg->target_engine == ENGINE_TYPE_MCTS_UCB1) {
+        const char *bm_str = (c->ucb1.book_mode == BOOK_MODE_BEST) ? "BEST" :
+                             (c->ucb1.book_mode == BOOK_MODE_GOOD) ? "GOOD" :
+                             (c->ucb1.book_mode == BOOK_MODE_ALL) ? "ALL" : "OFF";
+        fprintf(f, "%d,%d,%d,\"%s\",%.2f,%.1f,%d,%d,%d,%d,%.1f,%.4f,%.4f,%.4f,%d,\"%s\",%.4f,%d\n",
+                c->generation + 1, rank, c->id, engine_get_type_name(cfg->target_engine),
+                c->score_pct, c->points, c->games_played, c->wins, c->draws, c->losses, c->elo,
+                c->ucb1.exploration_alpha, c->rollout_epsilon, cfg->time_budget, c->max_rollout_depth,
+                bm_str, c->ucb1.book_temperature, c->use_db ? 1 : 0);
+    } else {
+        const char *bm_str = (c->puct.book_mode == BOOK_MODE_BEST) ? "BEST" :
+                             (c->puct.book_mode == BOOK_MODE_GOOD) ? "GOOD" :
+                             (c->puct.book_mode == BOOK_MODE_ALL) ? "ALL" : "OFF";
+        fprintf(f, "%d,%d,%d,\"%s\",%.2f,%.1f,%d,%d,%d,%d,%.1f,%.4f,%.4f,%.4f,%.4f,%d,%d,%.4f,\"%s\",%.4f,%d\n",
+                c->generation + 1, rank, c->id, engine_get_type_name(cfg->target_engine),
+                c->score_pct, c->points, c->games_played, c->wins, c->draws, c->losses, c->elo,
+                c->puct.c_puct, c->puct.puct_temperature, c->rollout_epsilon, cfg->time_budget, c->max_rollout_depth,
+                c->puct.use_guided_book ? 1 : 0, c->puct.lambda_book, bm_str, c->puct.book_temperature, c->use_db ? 1 : 0);
+    }
 }
 
 typedef struct {
@@ -896,7 +1006,11 @@ int tune_ga_run(const GAConfig *cfg, GAResult *out_result) {
         } else {
             csv_file = fopen(cfg->csv_path, "w");
             if (csv_file) {
-                fprintf(csv_file, "generation,rank,id,target_engine,score_pct,points,games_played,wins,draws,losses,elo,param_exploration,param_tau,rollout_epsilon,time_budget,max_rollout_depth,book_temperature,book_mode,use_book,use_db\n");
+                if (cfg->target_engine == ENGINE_TYPE_MCTS_UCB1) {
+                    fprintf(csv_file, "generation,rank,id,target_engine,score_pct,points,games_played,wins,draws,losses,elo,exploration_alpha,rollout_epsilon,time_budget,max_rollout_depth,book_mode,book_temperature,use_db\n");
+                } else {
+                    fprintf(csv_file, "generation,rank,id,target_engine,score_pct,points,games_played,wins,draws,losses,elo,c_puct,puct_temperature,rollout_epsilon,time_budget,max_rollout_depth,use_guided_book,lambda_book,book_mode,book_temperature,use_db\n");
+                }
             }
             ga_population_init(&pop, cfg, &rng);
             start_gen = 0;
@@ -972,51 +1086,58 @@ int tune_ga_run(const GAConfig *cfg, GAResult *out_result) {
     printf("  >>> Optimal Discovered Hyperparameters for %s <<<\n\n", engine_get_type_name(cfg->target_engine));
     
     if (cfg->target_engine == ENGINE_TYPE_MCTS_PUCT) {
-        printf("  - c_puct (exploration)    : %.4f\n", best_overall.puct_c_puct);
-        printf("  - tau (temperature)       : %.4f\n", best_overall.puct_temperature);
+        const char *bm_str = (best_overall.puct.book_mode == BOOK_MODE_BEST) ? "BEST" :
+                             (best_overall.puct.book_mode == BOOK_MODE_GOOD) ? "GOOD" :
+                             (best_overall.puct.book_mode == BOOK_MODE_ALL) ? "ALL" : "OFF";
+
+        printf("  - c_puct (exploration)    : %.4f\n", best_overall.puct.c_puct);
+        printf("  - tau (temperature)       : %.4f\n", best_overall.puct.puct_temperature);
         printf("  - rollout_epsilon         : %.4f\n", best_overall.rollout_epsilon);
         printf("  - max_rollout_depth       : %d\n", best_overall.max_rollout_depth);
-        printf("  - book_temperature        : %.4f\n", best_overall.book_temperature);
-        printf("  - book_mode               : %d (%s)\n", best_overall.book_mode,
-               (best_overall.book_mode == BOOK_MODE_BEST) ? "BEST" :
-               (best_overall.book_mode == BOOK_MODE_GOOD) ? "GOOD" :
-               (best_overall.book_mode == BOOK_MODE_PUCT_GUIDED) ? "PUCT_GUIDED" : "ALL");
-        printf("  - use_book                : %s\n", best_overall.use_book ? "true" : "false");
+        printf("  - use_guided_book         : %s\n", best_overall.puct.use_guided_book ? "true" : "false");
+        if (best_overall.puct.use_guided_book) {
+            printf("  - lambda_book (blending)  : %.4f\n", best_overall.puct.lambda_book);
+        } else {
+            printf("  - book_mode               : %d (%s)\n", best_overall.puct.book_mode, bm_str);
+            printf("  - book_temperature        : %.4f\n", best_overall.puct.book_temperature);
+        }
         printf("  - use_db                  : %s\n", best_overall.use_db ? "true" : "false");
         printf("  - Win Rate (Score %%)      : %.1f%% (Elo: %.0f)\n\n", best_overall.score_pct, best_overall.elo);
         
         printf("Recommended C EngineConfig preset:\n");
         printf("```c\n");
-        printf("cfg->puct_c_puct = %.4ff;\n", best_overall.puct_c_puct);
-        printf("cfg->puct_temperature = %.4ff;\n", best_overall.puct_temperature);
+        printf("cfg->puct_c_puct = %.4ff;\n", best_overall.puct.c_puct);
+        printf("cfg->puct_temperature = %.4ff;\n", best_overall.puct.puct_temperature);
         printf("cfg->puct_rollout_epsilon = %.4ff;\n", best_overall.rollout_epsilon);
         printf("cfg->puct_max_rollout_depth = %d;\n", best_overall.max_rollout_depth);
-        printf("cfg->book_temperature = %.4ff;\n", best_overall.book_temperature);
-        printf("cfg->book_mode = %d;\n", best_overall.book_mode);
-        printf("cfg->puct_use_book = %s;\n", best_overall.use_book ? "true" : "false");
+        printf("cfg->puct_use_guided_book = %s;\n", best_overall.puct.use_guided_book ? "true" : "false");
+        printf("cfg->puct_lambda_book = %.4ff;\n", best_overall.puct.lambda_book);
+        printf("cfg->puct_use_book = %s;\n", (!best_overall.puct.use_guided_book && best_overall.puct.book_mode != BOOK_MODE_OFF) ? "true" : "false");
+        printf("cfg->book_mode = %d;\n", best_overall.puct.use_guided_book ? BOOK_MODE_OFF : best_overall.puct.book_mode);
+        printf("cfg->book_temperature = %.4ff;\n", best_overall.puct.book_temperature);
         printf("cfg->puct_use_db = %s;\n", best_overall.use_db ? "true" : "false");
         printf("```\n\n");
     } else {
-        printf("  - alpha (exploration)     : %.4f\n", best_overall.mcts_exploration);
+        const char *bm_str = (best_overall.ucb1.book_mode == BOOK_MODE_BEST) ? "BEST" :
+                             (best_overall.ucb1.book_mode == BOOK_MODE_GOOD) ? "GOOD" :
+                             (best_overall.ucb1.book_mode == BOOK_MODE_ALL) ? "ALL" : "OFF";
+
+        printf("  - alpha (exploration)     : %.4f\n", best_overall.ucb1.exploration_alpha);
         printf("  - rollout_epsilon         : %.4f\n", best_overall.rollout_epsilon);
         printf("  - max_rollout_depth       : %d\n", best_overall.max_rollout_depth);
-        printf("  - book_temperature        : %.4f\n", best_overall.book_temperature);
-        printf("  - book_mode               : %d (%s)\n", best_overall.book_mode,
-               (best_overall.book_mode == BOOK_MODE_BEST) ? "BEST" :
-               (best_overall.book_mode == BOOK_MODE_GOOD) ? "GOOD" :
-               (best_overall.book_mode == BOOK_MODE_PUCT_GUIDED) ? "PUCT_GUIDED" : "ALL");
-        printf("  - use_book                : %s\n", best_overall.use_book ? "true" : "false");
+        printf("  - book_mode               : %d (%s)\n", best_overall.ucb1.book_mode, bm_str);
+        printf("  - book_temperature        : %.4f\n", best_overall.ucb1.book_temperature);
         printf("  - use_db                  : %s\n", best_overall.use_db ? "true" : "false");
         printf("  - Win Rate (Score %%)      : %.1f%% (Elo: %.0f)\n\n", best_overall.score_pct, best_overall.elo);
 
         printf("Recommended C EngineConfig preset:\n");
         printf("```c\n");
-        printf("cfg->mcts_exploration = %.4ff;\n", best_overall.mcts_exploration);
+        printf("cfg->mcts_exploration = %.4ff;\n", best_overall.ucb1.exploration_alpha);
         printf("cfg->mcts_rollout_epsilon = %.4ff;\n", best_overall.rollout_epsilon);
         printf("cfg->mcts_max_rollout_depth = %d;\n", best_overall.max_rollout_depth);
-        printf("cfg->book_temperature = %.4ff;\n", best_overall.book_temperature);
-        printf("cfg->book_mode = %d;\n", best_overall.book_mode);
-        printf("cfg->mcts_use_book = %s;\n", best_overall.use_book ? "true" : "false");
+        printf("cfg->book_mode = %d;\n", best_overall.ucb1.book_mode);
+        printf("cfg->mcts_use_book = %s;\n", (best_overall.ucb1.book_mode != BOOK_MODE_OFF) ? "true" : "false");
+        printf("cfg->book_temperature = %.4ff;\n", best_overall.ucb1.book_temperature);
         printf("cfg->mcts_use_db = %s;\n", best_overall.use_db ? "true" : "false");
         printf("```\n\n");
     }

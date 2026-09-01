@@ -441,7 +441,7 @@ Move engine_mcts_ucb1_get_move(void *state, const GameState *game) {
     }
 
     // Direct Opening Book Mode: If enabled and in instant mode (BEST, GOOD, ALL), select directly (0 ms)!
-    if (st->use_book && (st->book_mode == BOOK_MODE_BEST || st->book_mode == BOOK_MODE_GOOD || st->book_mode == BOOK_MODE_ALL)) {
+    if (st->use_book && (st->book_mode != BOOK_MODE_OFF)) {
         Move book_move = opening_book_select_move(game, st->book_mode, st->book_temperature, &st->rng_state);
         if (!move_is_none(book_move)) {
             if (st->debug_log) {

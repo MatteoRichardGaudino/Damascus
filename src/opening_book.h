@@ -15,8 +15,7 @@ typedef enum {
     BOOK_MODE_OFF = 0,
     BOOK_MODE_BEST = 1,      // Play only best-scored move
     BOOK_MODE_GOOD = 2,      // Sample among good moves (<= 10 cp loss)
-    BOOK_MODE_ALL = 3,       // Sample across all book moves
-    BOOK_MODE_PUCT_GUIDED = 4 // Blend book into PUCT priors without skipping search
+    BOOK_MODE_ALL = 3        // Sample across all book moves
 } BookPlayMode;
 
 typedef struct {

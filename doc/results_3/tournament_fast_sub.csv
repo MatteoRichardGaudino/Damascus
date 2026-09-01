@@ -1,0 +1,91 @@
+game_id,white_engine,black_engine,time_budget,winner_color,winner_engine,is_draw,reason,plies,white_avg_ms,black_avg_ms,duration_sec,white_pieces,black_pieces
+1,MCTS_UCB1 (No-DB),MCTS_PUCT (No-DB),0.200,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",112,178.38,172.09,19.282,1,4
+2,MCTS_PUCT (No-DB),MCTS_UCB1 (No-DB),0.200,Draw,Draw,1,"3-Fold Repetition",229,185.45,184.27,41.976,2,2
+3,MCTS_UCB1 (No-DB),MCTS_PUCT (No-DB),0.200,Draw,Draw,1,"3-Fold Repetition",224,185.77,186.83,41.373,2,2
+4,MCTS_PUCT (No-DB),MCTS_UCB1 (No-DB),0.200,Draw,Draw,1,"3-Fold Repetition",143,178.17,180.18,25.271,1,1
+5,MCTS_UCB1 (No-DB),MCTS_PUCT (No-DB),0.200,Draw,Draw,1,"Max Plies Limit (250)",250,188.93,187.25,46.662,3,3
+6,MCTS_PUCT (No-DB),MCTS_UCB1 (No-DB),0.200,White,MCTS_PUCT (No-DB),0,"Elimination / Block",57,144.27,163.25,8.451,6,2
+7,MCTS_UCB1 (No-DB),MCTS_PUCT (No-DB),0.200,Draw,Draw,1,"3-Fold Repetition",206,184.48,183.41,37.536,1,1
+8,MCTS_PUCT (No-DB),MCTS_UCB1 (No-DB),0.200,Draw,Draw,1,"Max Plies Limit (250)",250,186.93,182.47,45.821,1,1
+9,MCTS_UCB1 (No-DB),MCTS_PUCT (No-DB),0.200,Draw,Draw,1,"Max Plies Limit (250)",250,192.13,188.38,47.198,3,3
+10,MCTS_PUCT (No-DB),MCTS_UCB1 (No-DB),0.200,Black,MCTS_UCB1 (No-DB),0,"Elimination / Block",108,175.03,166.28,18.095,1,5
+11,MCTS_UCB1 (No-DB),MCTS_PUCT (No-DB),0.200,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",88,153.73,149.94,13.064,0,3
+12,MCTS_PUCT (No-DB),MCTS_UCB1 (No-DB),0.200,Black,MCTS_UCB1 (No-DB),0,"Elimination / Block",114,162.03,168.07,18.493,0,3
+13,MCTS_UCB1 (No-DB),MCTS_PUCT (No-DB),0.200,Draw,Draw,1,"Max Plies Limit (250)",250,190.52,188.73,47.042,3,3
+14,MCTS_PUCT (No-DB),MCTS_UCB1 (No-DB),0.200,Draw,Draw,1,"3-Fold Repetition",69,166.56,163.89,11.075,4,5
+15,MCTS_UCB1 (No-DB),MCTS_PUCT (No-DB),0.200,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",68,151.74,152.82,10.054,1,5
+16,MCTS_PUCT (No-DB),MCTS_UCB1 (No-DB),0.200,Draw,Draw,1,"Max Plies Limit (250)",250,190.21,192.17,47.433,2,2
+17,MCTS_UCB1 (No-DB),MCTS_PUCT (No-DB),0.200,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",162,177.75,171.58,27.956,0,1
+18,MCTS_PUCT (No-DB),MCTS_UCB1 (No-DB),0.200,Draw,Draw,1,"Max Plies Limit (250)",250,188.64,185.68,46.433,2,3
+19,MCTS_UCB1 (No-DB),MCTS_PUCT (No-DB),0.200,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",84,175.86,158.07,13.696,1,6
+20,MCTS_PUCT (No-DB),MCTS_UCB1 (No-DB),0.200,Black,MCTS_UCB1 (No-DB),0,"Elimination / Block",98,159.65,150.26,14.882,0,2
+21,MCTS_UCB1 (No-DB),MCTS_PUCT (No-DB),0.200,Draw,Draw,1,"Max Plies Limit (250)",250,187.35,190.52,46.872,3,3
+22,MCTS_PUCT (No-DB),MCTS_UCB1 (No-DB),0.200,Draw,Draw,1,"Max Plies Limit (250)",250,192.17,195.42,48.078,4,4
+23,MCTS_UCB1 (No-DB),MCTS_PUCT (No-DB),0.200,Draw,Draw,1,"Max Plies Limit (250)",250,192.19,190.65,47.492,3,3
+24,MCTS_PUCT (No-DB),MCTS_UCB1 (No-DB),0.200,Draw,Draw,1,"Max Plies Limit (250)",250,186.74,187.30,46.397,1,1
+25,MCTS_UCB1 (No-DB),MCTS_PUCT (No-DB),0.200,Draw,Draw,1,"Max Plies Limit (250)",250,190.59,187.28,46.873,2,2
+26,MCTS_PUCT (No-DB),MCTS_UCB1 (No-DB),0.200,Black,MCTS_UCB1 (No-DB),0,"Elimination / Block",100,169.08,163.59,16.307,0,4
+27,MCTS_UCB1 (No-DB),MCTS_PUCT (No-DB),0.200,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",132,172.55,173.72,22.517,1,2
+28,MCTS_PUCT (No-DB),MCTS_UCB1 (No-DB),0.200,Black,MCTS_UCB1 (No-DB),0,"Elimination / Block",92,161.20,164.73,14.673,0,3
+29,MCTS_UCB1 (No-DB),MCTS_PUCT (No-DB),0.200,White,MCTS_UCB1 (No-DB),0,"Elimination / Block",93,161.16,180.06,15.523,7,1
+30,MCTS_PUCT (No-DB),MCTS_UCB1 (No-DB),0.200,Black,MCTS_UCB1 (No-DB),0,"Elimination / Block",112,165.18,167.55,18.313,0,1
+31,MCTS_UCB1 (No-DB),CheckerBoard,0.200,Draw,Draw,1,"Max Plies Limit (250)",250,187.33,181.72,45.789,4,3
+32,CheckerBoard,MCTS_UCB1 (No-DB),0.200,Draw,Draw,1,"3-Fold Repetition",218,173.20,181.69,38.344,1,1
+33,MCTS_UCB1 (No-DB),CheckerBoard,0.200,White,MCTS_UCB1 (No-DB),0,"Elimination / Block",67,145.81,143.50,9.414,4,0
+34,CheckerBoard,MCTS_UCB1 (No-DB),0.200,Black,MCTS_UCB1 (No-DB),0,"Elimination / Block",158,161.77,174.60,26.267,0,1
+35,MCTS_UCB1 (No-DB),CheckerBoard,0.200,White,MCTS_UCB1 (No-DB),0,"Elimination / Block",53,108.06,139.05,6.310,5,0
+36,CheckerBoard,MCTS_UCB1 (No-DB),0.200,White,CheckerBoard,0,"Elimination / Block",143,156.64,180.27,23.754,5,0
+37,MCTS_UCB1 (No-DB),CheckerBoard,0.200,Draw,Draw,1,"3-Fold Repetition",85,176.43,168.06,14.311,2,3
+38,CheckerBoard,MCTS_UCB1 (No-DB),0.200,Draw,Draw,1,"3-Fold Repetition",156,171.48,182.10,27.247,3,2
+39,MCTS_UCB1 (No-DB),CheckerBoard,0.200,Draw,Draw,1,"3-Fold Repetition",139,179.97,168.54,23.896,3,4
+40,CheckerBoard,MCTS_UCB1 (No-DB),0.200,Black,MCTS_UCB1 (No-DB),0,"Elimination / Block",54,151.47,115.70,6.968,0,5
+41,MCTS_UCB1 (No-DB),CheckerBoard,0.200,White,MCTS_UCB1 (No-DB),0,"Elimination / Block",85,143.11,157.23,12.472,4,0
+42,CheckerBoard,MCTS_UCB1 (No-DB),0.200,Black,MCTS_UCB1 (No-DB),0,"Elimination / Block",56,134.53,133.60,7.248,1,4
+43,MCTS_UCB1 (No-DB),CheckerBoard,0.200,White,MCTS_UCB1 (No-DB),0,"Elimination / Block",155,174.29,161.34,25.695,2,0
+44,CheckerBoard,MCTS_UCB1 (No-DB),0.200,Black,MCTS_UCB1 (No-DB),0,"Elimination / Block",142,169.83,171.68,23.920,0,4
+45,MCTS_UCB1 (No-DB),CheckerBoard,0.200,White,MCTS_UCB1 (No-DB),0,"Elimination / Block",97,150.27,160.32,14.754,4,0
+46,CheckerBoard,MCTS_UCB1 (No-DB),0.200,Draw,Draw,1,"Max Plies Limit (250)",250,175.32,187.30,44.995,1,1
+47,MCTS_UCB1 (No-DB),CheckerBoard,0.200,Black,CheckerBoard,0,"Elimination / Block",66,156.59,120.14,8.864,0,4
+48,CheckerBoard,MCTS_UCB1 (No-DB),0.200,Black,MCTS_UCB1 (No-DB),0,"Elimination / Block",80,154.03,143.89,11.628,0,6
+49,MCTS_UCB1 (No-DB),CheckerBoard,0.200,Draw,Draw,1,"3-Fold Repetition",93,169.86,161.58,15.092,3,4
+50,CheckerBoard,MCTS_UCB1 (No-DB),0.200,Black,MCTS_UCB1 (No-DB),0,"Elimination / Block",100,160.91,155.40,15.521,0,4
+51,MCTS_UCB1 (No-DB),CheckerBoard,0.200,White,MCTS_UCB1 (No-DB),0,"Elimination / Block",87,153.78,153.15,13.051,3,0
+52,CheckerBoard,MCTS_UCB1 (No-DB),0.200,Black,MCTS_UCB1 (No-DB),0,"Elimination / Block",120,163.36,166.33,19.489,1,4
+53,MCTS_UCB1 (No-DB),CheckerBoard,0.200,Draw,Draw,1,"Max Plies Limit (250)",250,182.50,178.62,44.819,1,1
+54,CheckerBoard,MCTS_UCB1 (No-DB),0.200,Black,MCTS_UCB1 (No-DB),0,"Elimination / Block",62,142.48,127.00,8.090,0,3
+55,MCTS_UCB1 (No-DB),CheckerBoard,0.200,White,MCTS_UCB1 (No-DB),0,"Elimination / Block",71,143.19,130.21,9.454,3,0
+56,CheckerBoard,MCTS_UCB1 (No-DB),0.200,Black,MCTS_UCB1 (No-DB),0,"Elimination / Block",144,160.95,169.26,23.472,0,3
+57,MCTS_UCB1 (No-DB),CheckerBoard,0.200,White,MCTS_UCB1 (No-DB),0,"Elimination / Block",59,145.14,114.10,7.423,3,0
+58,CheckerBoard,MCTS_UCB1 (No-DB),0.200,Black,MCTS_UCB1 (No-DB),0,"Elimination / Block",70,133.49,147.36,9.579,1,3
+59,MCTS_UCB1 (No-DB),CheckerBoard,0.200,Draw,Draw,1,"3-Fold Repetition",169,173.98,163.20,28.186,1,1
+60,CheckerBoard,MCTS_UCB1 (No-DB),0.200,Black,MCTS_UCB1 (No-DB),0,"Elimination / Block",66,119.68,131.54,8.043,0,2
+61,MCTS_PUCT (No-DB),CheckerBoard,0.200,White,MCTS_PUCT (No-DB),0,"Elimination / Block",143,178.81,164.57,24.245,2,0
+62,CheckerBoard,MCTS_PUCT (No-DB),0.200,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",54,134.15,139.68,7.137,1,4
+63,MCTS_PUCT (No-DB),CheckerBoard,0.200,Draw,Draw,1,"3-Fold Repetition",209,189.92,178.68,38.171,3,3
+64,CheckerBoard,MCTS_PUCT (No-DB),0.200,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",74,152.12,145.66,10.732,0,3
+65,MCTS_PUCT (No-DB),CheckerBoard,0.200,White,MCTS_PUCT (No-DB),0,"Elimination / Block",91,156.88,155.00,13.893,3,0
+66,CheckerBoard,MCTS_PUCT (No-DB),0.200,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",58,116.78,129.65,6.906,0,5
+67,MCTS_PUCT (No-DB),CheckerBoard,0.200,Draw,Draw,1,"3-Fold Repetition",125,178.85,175.22,21.803,3,4
+68,CheckerBoard,MCTS_PUCT (No-DB),0.200,Draw,Draw,1,"3-Fold Repetition",150,170.93,179.72,25.973,3,2
+69,MCTS_PUCT (No-DB),CheckerBoard,0.200,White,MCTS_PUCT (No-DB),0,"Elimination / Block",137,174.94,169.00,23.252,2,0
+70,CheckerBoard,MCTS_PUCT (No-DB),0.200,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",50,138.19,117.76,6.146,0,6
+71,MCTS_PUCT (No-DB),CheckerBoard,0.200,White,MCTS_PUCT (No-DB),0,"Elimination / Block",73,134.48,138.10,9.685,3,0
+72,CheckerBoard,MCTS_PUCT (No-DB),0.200,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",86,155.65,143.95,12.615,0,2
+73,MCTS_PUCT (No-DB),CheckerBoard,0.200,White,MCTS_PUCT (No-DB),0,"Elimination / Block",119,174.60,183.08,20.938,3,0
+74,CheckerBoard,MCTS_PUCT (No-DB),0.200,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",44,132.30,96.26,4.812,0,5
+75,MCTS_PUCT (No-DB),CheckerBoard,0.200,White,MCTS_PUCT (No-DB),0,"Elimination / Block",87,149.82,157.08,13.055,4,1
+76,CheckerBoard,MCTS_PUCT (No-DB),0.200,Draw,Draw,1,"3-Fold Repetition",134,162.60,180.38,22.651,3,2
+77,MCTS_PUCT (No-DB),CheckerBoard,0.200,White,MCTS_PUCT (No-DB),0,"Elimination / Block",159,173.57,174.85,27.386,4,0
+78,CheckerBoard,MCTS_PUCT (No-DB),0.200,Draw,Draw,1,"3-Fold Repetition",188,177.27,177.34,33.006,1,1
+79,MCTS_PUCT (No-DB),CheckerBoard,0.200,Draw,Draw,1,"Max Plies Limit (250)",250,189.85,178.88,45.765,1,1
+80,CheckerBoard,MCTS_PUCT (No-DB),0.200,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",60,142.32,132.30,7.978,0,6
+81,MCTS_PUCT (No-DB),CheckerBoard,0.200,Draw,Draw,1,"Max Plies Limit (250)",250,188.40,180.66,45.798,1,1
+82,CheckerBoard,MCTS_PUCT (No-DB),0.200,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",48,134.22,122.82,5.914,0,6
+83,MCTS_PUCT (No-DB),CheckerBoard,0.200,Draw,Draw,1,"3-Fold Repetition",241,185.84,177.84,43.479,1,1
+84,CheckerBoard,MCTS_PUCT (No-DB),0.200,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",74,133.41,156.97,10.487,0,3
+85,MCTS_PUCT (No-DB),CheckerBoard,0.200,Draw,Draw,1,"3-Fold Repetition",83,182.99,166.73,14.182,5,7
+86,CheckerBoard,MCTS_PUCT (No-DB),0.200,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",68,140.49,134.46,9.093,0,4
+87,MCTS_PUCT (No-DB),CheckerBoard,0.200,Draw,Draw,1,"3-Fold Repetition",129,189.43,170.19,22.869,3,6
+88,CheckerBoard,MCTS_PUCT (No-DB),0.200,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",66,140.47,138.94,8.958,0,4
+89,MCTS_PUCT (No-DB),CheckerBoard,0.200,Draw,Draw,1,"3-Fold Repetition",171,179.80,166.45,29.277,1,1
+90,CheckerBoard,MCTS_PUCT (No-DB),0.200,Draw,Draw,1,"3-Fold Repetition",123,172.36,178.04,21.204,3,4

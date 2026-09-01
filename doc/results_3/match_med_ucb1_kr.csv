@@ -1,0 +1,17 @@
+game_id,white_engine,black_engine,time_budget,winner_color,winner_engine,is_draw,reason,plies,white_avg_ms,black_avg_ms,duration_sec,white_pieces,black_pieces
+1,MCTS_UCB1 (No-DB),Kingsrow,1.000,Black,Kingsrow,0,"Elimination / Block",112,859.60,891.71,96.329,0,3
+2,Kingsrow,MCTS_UCB1 (No-DB),1.000,White,Kingsrow,0,"Elimination / Block",81,1016.58,872.16,74.682,3,1
+3,MCTS_UCB1 (No-DB),Kingsrow,1.000,Black,Kingsrow,0,"Elimination / Block",114,831.33,933.33,98.828,0,2
+4,Kingsrow,MCTS_UCB1 (No-DB),1.000,White,Kingsrow,0,"Elimination / Block",121,705.70,811.96,90.256,2,0
+5,MCTS_UCB1 (No-DB),Kingsrow,1.000,Draw,Draw,1,"Max Plies Limit (250)",250,952.71,111.63,131.997,3,3
+6,Kingsrow,MCTS_UCB1 (No-DB),1.000,White,Kingsrow,0,"Elimination / Block",103,780.54,820.37,80.832,3,0
+7,MCTS_UCB1 (No-DB),Kingsrow,1.000,Black,Kingsrow,0,"Elimination / Block",90,841.25,873.28,75.445,1,3
+8,Kingsrow,MCTS_UCB1 (No-DB),1.000,White,Kingsrow,0,"Elimination / Block",79,844.96,777.70,62.511,3,1
+9,MCTS_UCB1 (No-DB),Kingsrow,1.000,Black,Kingsrow,0,"Elimination / Block",140,857.74,1113.45,136.021,1,2
+10,Kingsrow,MCTS_UCB1 (No-DB),1.000,White,Kingsrow,0,"Elimination / Block",127,1111.67,867.83,123.848,3,1
+11,MCTS_UCB1 (No-DB),Kingsrow,1.000,Draw,Draw,1,"3-Fold Repetition",208,933.38,436.02,141.061,1,1
+12,Kingsrow,MCTS_UCB1 (No-DB),1.000,White,Kingsrow,0,"Elimination / Block",87,787.53,809.82,67.882,3,0
+13,MCTS_UCB1 (No-DB),Kingsrow,1.000,Black,Kingsrow,0,"Elimination / Block",80,764.66,801.94,61.103,0,1
+14,Kingsrow,MCTS_UCB1 (No-DB),1.000,White,Kingsrow,0,"Elimination / Block",99,946.41,852.32,87.291,4,0
+15,MCTS_UCB1 (No-DB),Kingsrow,1.000,Black,Kingsrow,0,"Elimination / Block",116,782.57,888.98,95.286,0,2
+16,Kingsrow,MCTS_UCB1 (No-DB),1.000,White,Kingsrow,0,"Elimination / Block",131,968.66,880.56,119.326,1,0

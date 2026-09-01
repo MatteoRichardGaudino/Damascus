@@ -9,11 +9,12 @@
 
 #define PUCT_MAX_NODES              2000000
 #define PUCT_SAFETY_THRESHOLD_NODES 1600000
-#define PUCT_DEFAULT_C_PUCT         3.1821f
-#define PUCT_DEFAULT_TEMPERATURE    1.3406f
+#define PUCT_DEFAULT_C_PUCT         2.5857f
+#define PUCT_DEFAULT_TEMPERATURE    2.2048f
 #define PUCT_DEFAULT_TIME_BUDGET    1.0
-#define PUCT_MAX_ROLLOUT_DEPTH      70
-#define PUCT_DEFAULT_ROLLOUT_EPSILON 0.2553f
+#define PUCT_MAX_ROLLOUT_DEPTH      112
+#define PUCT_DEFAULT_ROLLOUT_EPSILON 0.3416f
+#define PUCT_DEFAULT_LAMBDA_BOOK    0.0791f
 
 // Compact Node Structure with prior probability P(s, a) and 64-bit Zobrist key
 typedef struct {
@@ -44,6 +45,7 @@ void engine_mcts_puct_set_max_rollout_depth(void *state, int depth);
 void engine_mcts_puct_set_rollout_epsilon(void *state, float epsilon);
 void engine_mcts_puct_set_use_db(void *state, bool enable);
 void engine_mcts_puct_set_use_book(void *state, bool enable);
+void engine_mcts_puct_set_guided_book(void *state, bool enable, float lambda);
 void engine_mcts_puct_set_book_mode(void *state, BookPlayMode mode);
 void engine_mcts_puct_set_book_temperature(void *state, float tau);
 void engine_mcts_puct_set_debug_log(void *state, bool enable);

@@ -1,0 +1,161 @@
+game_id,white_engine,black_engine,time_budget,winner_color,winner_engine,is_draw,reason,plies,white_avg_ms,black_avg_ms,duration_sec,white_pieces,black_pieces
+1,CheckerBoard,MCTS_PUCT (DB),1.0,Black,MCTS_PUCT (DB),0,Elimination / Block,110,847.15,820.34,90.052,0,3
+2,MCTS_PUCT (DB),CheckerBoard,1.0,White,MCTS_PUCT (DB),0,Elimination / Block,107,845.68,797.93,86.32,3,0
+3,CheckerBoard,MCTS_PUCT (DB),1.0,Black,MCTS_PUCT (DB),0,Elimination / Block,130,844.09,897.39,111.473,0,4
+4,MCTS_PUCT (DB),CheckerBoard,1.0,Black,CheckerBoard,0,Elimination / Block,108,876.92,779.05,87.773,0,4
+5,CheckerBoard,MCTS_PUCT (DB),1.0,Black,MCTS_PUCT (DB),0,Elimination / Block,110,840.18,880.53,92.926,0,5
+6,MCTS_PUCT (DB),CheckerBoard,1.0,Draw,Draw,1,3-Fold Repetition,119,923.9,874.34,105.23,3,4
+7,CheckerBoard,MCTS_PUCT (DB),1.0,Draw,Draw,1,Max Plies Limit (250),250,913.35,958.96,232.185,2,2
+8,MCTS_PUCT (DB),CheckerBoard,1.0,Black,CheckerBoard,0,Elimination / Block,128,899.36,764.71,104.847,0,4
+9,CheckerBoard,MCTS_PUCT (DB),1.0,Black,MCTS_PUCT (DB),0,Elimination / Block,98,800.65,828.41,78.201,0,3
+10,MCTS_PUCT (DB),CheckerBoard,1.0,Black,CheckerBoard,0,Elimination / Block,84,815.48,633.74,59.422,1,3
+11,CheckerBoard,MCTS_PUCT (DB),1.0,Draw,Draw,1,3-Fold Repetition,89,926.32,841.37,76.942,3,3
+12,MCTS_PUCT (DB),CheckerBoard,1.0,Draw,Draw,1,3-Fold Repetition,107,913.37,860.22,93.146,2,5
+13,CheckerBoard,MCTS_PUCT (DB),1.0,Black,MCTS_PUCT (DB),0,Elimination / Block,58,603.76,616.33,34.165,0,4
+14,MCTS_PUCT (DB),CheckerBoard,1.0,White,MCTS_PUCT (DB),0,Elimination / Block,61,743.83,571.89,38.903,4,0
+15,CheckerBoard,MCTS_PUCT (DB),1.0,Black,MCTS_PUCT (DB),0,Elimination / Block,50,710.02,659.51,32.871,0,7
+16,MCTS_PUCT (DB),CheckerBoard,1.0,White,MCTS_PUCT (DB),0,Elimination / Block,49,627.05,646.58,29.923,6,0
+17,CheckerBoard,MCTS_PUCT (DB),1.0,Black,MCTS_PUCT (DB),0,Elimination / Block,52,599.8,566.76,29.168,0,2
+18,MCTS_PUCT (DB),CheckerBoard,1.0,Draw,Draw,1,3-Fold Repetition,135,909.02,918.59,121.538,4,5
+19,CheckerBoard,MCTS_PUCT (DB),1.0,Draw,Draw,1,Max Plies Limit (250),250,922.96,938.3,230.811,2,3
+20,MCTS_PUCT (DB),CheckerBoard,1.0,Black,CheckerBoard,0,Elimination / Block,110,813.96,746.3,84.26,0,3
+21,CheckerBoard,MCTS_PUCT (DB),1.0,White,CheckerBoard,0,Elimination / Block,99,711.18,856.38,75.96,2,0
+22,MCTS_PUCT (DB),CheckerBoard,1.0,Draw,Draw,1,Max Plies Limit (250),250,951.51,955.3,236.459,2,2
+23,CheckerBoard,MCTS_PUCT (DB),1.0,White,CheckerBoard,0,Elimination / Block,121,738.51,884.69,96.513,3,0
+24,MCTS_PUCT (DB),CheckerBoard,1.0,Draw,Draw,1,3-Fold Repetition,87,815.64,805.78,68.92,3,4
+25,CheckerBoard,MCTS_PUCT (DB),1.0,Black,MCTS_PUCT (DB),0,Elimination / Block,58,639.84,685.43,37.11,0,4
+26,MCTS_PUCT (DB),CheckerBoard,1.0,Draw,Draw,1,3-Fold Repetition,85,837.36,776.56,67.019,2,5
+27,CheckerBoard,MCTS_PUCT (DB),1.0,Black,MCTS_PUCT (DB),0,Elimination / Block,54,728.42,602.21,34.601,0,5
+28,MCTS_PUCT (DB),CheckerBoard,1.0,White,MCTS_PUCT (DB),0,Elimination / Block,73,725.41,706.71,50.853,4,0
+29,CheckerBoard,MCTS_PUCT (DB),1.0,White,CheckerBoard,0,Elimination / Block,103,742.91,861.92,80.992,4,0
+30,MCTS_PUCT (DB),CheckerBoard,1.0,Draw,Draw,1,Max Plies Limit (250),250,946.99,946.47,234.804,4,3
+31,CheckerBoard,MCTS_PUCT (DB),1.0,Black,MCTS_PUCT (DB),0,Elimination / Block,88,834.86,811.42,70.795,1,3
+32,MCTS_PUCT (DB),CheckerBoard,1.0,Draw,Draw,1,3-Fold Repetition,181,911.29,894.49,161.637,2,4
+33,CheckerBoard,MCTS_UCB1 (DB),1.0,Draw,Draw,1,Max Plies Limit (250),250,949.46,945.1,234.939,2,3
+34,MCTS_UCB1 (DB),CheckerBoard,1.0,Draw,Draw,1,Max Plies Limit (250),250,928.67,949.1,232.857,3,2
+35,CheckerBoard,MCTS_UCB1 (DB),1.0,White,CheckerBoard,0,Elimination / Block,143,828.67,844.04,117.926,2,0
+36,MCTS_UCB1 (DB),CheckerBoard,1.0,Draw,Draw,1,3-Fold Repetition,99,857.65,873.81,83.973,3,4
+37,CheckerBoard,MCTS_UCB1 (DB),1.0,Draw,Draw,1,3-Fold Repetition,248,924.88,919.86,226.922,1,1
+38,MCTS_UCB1 (DB),CheckerBoard,1.0,Draw,Draw,1,3-Fold Repetition,107,868.89,842.89,89.89,2,2
+39,CheckerBoard,MCTS_UCB1 (DB),1.0,Black,MCTS_UCB1 (DB),0,Elimination / Block,72,856.14,715.12,54.997,0,4
+40,MCTS_UCB1 (DB),CheckerBoard,1.0,White,MCTS_UCB1 (DB),0,Elimination / Block,149,865.96,879.51,128.301,3,0
+41,CheckerBoard,MCTS_UCB1 (DB),1.0,Draw,Draw,1,3-Fold Repetition,208,910.18,903.21,186.792,1,1
+42,MCTS_UCB1 (DB),CheckerBoard,1.0,Draw,Draw,1,Max Plies Limit (250),250,930.26,940.63,232.013,3,3
+43,CheckerBoard,MCTS_UCB1 (DB),1.0,Black,MCTS_UCB1 (DB),0,Elimination / Block,110,709.79,797.54,81.402,0,2
+44,MCTS_UCB1 (DB),CheckerBoard,1.0,Draw,Draw,1,3-Fold Repetition,105,867.55,858.58,88.906,3,4
+45,CheckerBoard,MCTS_UCB1 (DB),1.0,Draw,Draw,1,3-Fold Repetition,214,912.47,897.2,191.842,1,1
+46,MCTS_UCB1 (DB),CheckerBoard,1.0,White,MCTS_UCB1 (DB),0,Elimination / Block,43,714.86,648.7,27.989,7,0
+47,CheckerBoard,MCTS_UCB1 (DB),1.0,Black,MCTS_UCB1 (DB),0,Elimination / Block,96,792.49,809.3,75.292,0,3
+48,MCTS_UCB1 (DB),CheckerBoard,1.0,Draw,Draw,1,3-Fold Repetition,85,834.33,851.52,69.961,2,2
+49,CheckerBoard,MCTS_UCB1 (DB),1.0,Black,MCTS_UCB1 (DB),0,Elimination / Block,52,759.21,640.28,34.99,0,7
+50,MCTS_UCB1 (DB),CheckerBoard,1.0,Draw,Draw,1,Max Plies Limit (250),250,978.95,948.2,238.982,3,3
+51,CheckerBoard,MCTS_UCB1 (DB),1.0,Black,MCTS_UCB1 (DB),0,Elimination / Block,58,792.77,643.49,40.219,0,5
+52,MCTS_UCB1 (DB),CheckerBoard,1.0,White,MCTS_UCB1 (DB),0,Elimination / Block,187,906.48,880.48,165.318,3,0
+53,CheckerBoard,MCTS_UCB1 (DB),1.0,Black,MCTS_UCB1 (DB),0,Elimination / Block,94,699.27,805.27,69.214,0,3
+54,MCTS_UCB1 (DB),CheckerBoard,1.0,Draw,Draw,1,3-Fold Repetition,167,917.96,923.66,151.949,3,4
+55,CheckerBoard,MCTS_UCB1 (DB),1.0,Draw,Draw,1,3-Fold Repetition,124,882.21,903.78,108.953,4,3
+56,MCTS_UCB1 (DB),CheckerBoard,1.0,Draw,Draw,1,Max Plies Limit (250),250,931.89,939.75,232.104,3,3
+57,CheckerBoard,MCTS_UCB1 (DB),1.0,Draw,Draw,1,Max Plies Limit (250),250,930.98,939.62,231.97,2,2
+58,MCTS_UCB1 (DB),CheckerBoard,1.0,White,MCTS_UCB1 (DB),0,Elimination / Block,113,841.58,868.6,94.907,4,0
+59,CheckerBoard,MCTS_UCB1 (DB),1.0,Black,MCTS_UCB1 (DB),0,Elimination / Block,118,849.7,828.78,97.363,0,3
+60,MCTS_UCB1 (DB),CheckerBoard,1.0,Draw,Draw,1,3-Fold Repetition,229,897.2,924.93,206.81,1,1
+61,CheckerBoard,MCTS_UCB1 (DB),1.0,Black,MCTS_UCB1 (DB),0,Elimination / Block,66,718.35,751.92,47.052,0,4
+62,MCTS_UCB1 (DB),CheckerBoard,1.0,Draw,Draw,1,Max Plies Limit (250),250,924.14,939.25,231.077,2,2
+63,CheckerBoard,MCTS_UCB1 (DB),1.0,Draw,Draw,1,3-Fold Repetition,214,902.57,889.13,189.933,1,1
+64,MCTS_UCB1 (DB),CheckerBoard,1.0,Draw,Draw,1,Max Plies Limit (250),250,906.93,948.34,230.068,1,1
+65,MCTS_PUCT (DB),MCTS_UCB1 (DB),1.0,Black,MCTS_UCB1 (DB),0,Elimination / Block,126,880.71,875.14,108.87,0,2
+66,MCTS_UCB1 (DB),MCTS_PUCT (DB),1.0,Black,MCTS_PUCT (DB),0,Elimination / Block,144,876.7,860.3,123.341,0,3
+67,MCTS_PUCT (DB),MCTS_UCB1 (DB),1.0,Draw,Draw,1,Max Plies Limit (250),250,968.52,962.34,239.441,3,2
+68,MCTS_UCB1 (DB),MCTS_PUCT (DB),1.0,Black,MCTS_PUCT (DB),0,Elimination / Block,118,881.58,859.68,101.0,0,1
+69,MCTS_PUCT (DB),MCTS_UCB1 (DB),1.0,White,MCTS_PUCT (DB),0,Elimination / Block,93,808.71,891.07,77.309,5,0
+70,MCTS_UCB1 (DB),MCTS_PUCT (DB),1.0,Draw,Draw,1,Max Plies Limit (250),250,914.33,976.8,234.522,1,1
+71,MCTS_PUCT (DB),MCTS_UCB1 (DB),1.0,Black,MCTS_UCB1 (DB),0,Elimination / Block,86,822.45,787.96,67.642,1,2
+72,MCTS_UCB1 (DB),MCTS_PUCT (DB),1.0,Black,MCTS_PUCT (DB),0,Elimination / Block,114,896.63,850.49,97.844,0,4
+73,MCTS_PUCT (DB),MCTS_UCB1 (DB),1.0,Black,MCTS_UCB1 (DB),0,Elimination / Block,90,816.58,752.91,69.069,0,2
+74,MCTS_UCB1 (DB),MCTS_PUCT (DB),1.0,White,MCTS_UCB1 (DB),0,Elimination / Block,111,858.48,905.51,96.119,4,2
+75,MCTS_PUCT (DB),MCTS_UCB1 (DB),1.0,Draw,Draw,1,3-Fold Repetition,219,972.26,920.78,205.435,1,1
+76,MCTS_UCB1 (DB),MCTS_PUCT (DB),1.0,Draw,Draw,1,3-Fold Repetition,108,872.73,909.62,94.472,3,2
+77,MCTS_PUCT (DB),MCTS_UCB1 (DB),1.0,White,MCTS_PUCT (DB),0,Elimination / Block,127,878.33,859.81,108.656,1,0
+78,MCTS_UCB1 (DB),MCTS_PUCT (DB),1.0,Draw,Draw,1,Max Plies Limit (250),250,931.31,1007.41,240.421,3,2
+79,MCTS_PUCT (DB),MCTS_UCB1 (DB),1.0,White,MCTS_PUCT (DB),0,Elimination / Block,113,823.65,820.35,91.253,3,0
+80,MCTS_UCB1 (DB),MCTS_PUCT (DB),1.0,White,MCTS_UCB1 (DB),0,Elimination / Block,135,852.68,892.5,116.041,1,0
+81,MCTS_PUCT (DB),MCTS_UCB1 (DB),1.0,Draw,Draw,1,3-Fold Repetition,204,935.4,923.4,187.751,1,1
+82,MCTS_UCB1 (DB),MCTS_PUCT (DB),1.0,White,MCTS_UCB1 (DB),0,Elimination / Block,195,880.2,927.99,174.476,4,0
+83,MCTS_PUCT (DB),MCTS_UCB1 (DB),1.0,Draw,Draw,1,3-Fold Repetition,179,911.62,900.74,160.411,1,1
+84,MCTS_UCB1 (DB),MCTS_PUCT (DB),1.0,Black,MCTS_PUCT (DB),0,Elimination / Block,176,904.03,955.09,161.754,0,3
+85,MCTS_PUCT (DB),MCTS_UCB1 (DB),1.0,Draw,Draw,1,3-Fold Repetition,129,947.27,910.57,118.004,4,3
+86,MCTS_UCB1 (DB),MCTS_PUCT (DB),1.0,Draw,Draw,1,Max Plies Limit (250),250,949.83,1039.26,246.663,4,3
+87,MCTS_PUCT (DB),MCTS_UCB1 (DB),1.0,Draw,Draw,1,Max Plies Limit (250),250,1076.49,960.0,252.539,1,1
+88,MCTS_UCB1 (DB),MCTS_PUCT (DB),1.0,White,MCTS_UCB1 (DB),0,Elimination / Block,131,880.23,935.25,117.081,5,0
+89,MCTS_PUCT (DB),MCTS_UCB1 (DB),1.0,White,MCTS_PUCT (DB),0,Elimination / Block,183,984.55,941.27,174.318,5,0
+90,MCTS_UCB1 (DB),MCTS_PUCT (DB),1.0,Draw,Draw,1,Max Plies Limit (250),250,924.38,1025.85,241.841,3,2
+91,MCTS_PUCT (DB),MCTS_UCB1 (DB),1.0,Black,MCTS_UCB1 (DB),0,Elimination / Block,74,952.96,781.85,62.457,0,7
+92,MCTS_UCB1 (DB),MCTS_PUCT (DB),1.0,White,MCTS_UCB1 (DB),0,Elimination / Block,75,735.89,829.1,57.079,2,0
+93,MCTS_PUCT (DB),MCTS_UCB1 (DB),1.0,Black,MCTS_UCB1 (DB),0,Elimination / Block,102,909.17,848.05,87.87,0,4
+94,MCTS_UCB1 (DB),MCTS_PUCT (DB),1.0,White,MCTS_UCB1 (DB),0,Elimination / Block,175,874.96,881.14,151.909,2,0
+95,MCTS_PUCT (DB),MCTS_UCB1 (DB),1.0,White,MCTS_PUCT (DB),0,Elimination / Block,105,857.09,847.25,87.783,2,0
+96,MCTS_UCB1 (DB),MCTS_PUCT (DB),1.0,Draw,Draw,1,Max Plies Limit (250),250,952.82,938.28,234.509,3,4
+97,Kingsrow,MCTS_PUCT (DB),1.0,White,Kingsrow,0,Elimination / Block,91,848.96,737.9,70.676,2,0
+98,MCTS_PUCT (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,100,806.22,702.71,73.943,0,2
+99,Kingsrow,MCTS_PUCT (DB),1.0,White,Kingsrow,0,Elimination / Block,95,906.5,855.59,81.969,4,1
+100,MCTS_PUCT (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,66,561.5,874.33,45.95,0,4
+101,Kingsrow,MCTS_PUCT (DB),1.0,White,Kingsrow,0,Elimination / Block,111,898.86,856.1,95.673,2,0
+102,MCTS_PUCT (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,108,825.34,992.09,96.331,0,1
+103,Kingsrow,MCTS_PUCT (DB),1.0,White,Kingsrow,0,Elimination / Block,81,851.64,708.55,61.704,3,0
+104,MCTS_PUCT (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,142,888.15,1037.25,134.787,0,1
+105,Kingsrow,MCTS_PUCT (DB),1.0,White,Kingsrow,0,Elimination / Block,91,905.93,769.13,74.614,2,0
+106,MCTS_PUCT (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,70,762.22,850.93,54.851,0,3
+107,Kingsrow,MCTS_PUCT (DB),1.0,White,Kingsrow,0,Elimination / Block,53,908.72,699.29,41.112,2,0
+108,MCTS_PUCT (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,124,894.93,909.86,110.099,0,2
+109,Kingsrow,MCTS_PUCT (DB),1.0,Draw,Draw,1,Max Plies Limit (250),250,144.66,997.73,141.671,4,4
+110,MCTS_PUCT (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,116,864.58,856.57,98.112,0,2
+111,Kingsrow,MCTS_PUCT (DB),1.0,White,Kingsrow,0,Elimination / Block,89,706.11,734.64,62.663,2,0
+112,MCTS_PUCT (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,144,863.37,793.54,117.649,0,2
+113,Kingsrow,MCTS_PUCT (DB),1.0,White,Kingsrow,0,Elimination / Block,91,933.83,883.59,80.906,4,1
+114,MCTS_PUCT (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,78,715.26,906.9,61.646,1,3
+115,Kingsrow,MCTS_PUCT (DB),1.0,White,Kingsrow,0,Elimination / Block,79,790.4,741.64,59.012,2,0
+116,MCTS_PUCT (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,90,782.8,376.85,51.029,0,2
+117,Kingsrow,MCTS_PUCT (DB),1.0,White,Kingsrow,0,Elimination / Block,109,812.5,822.95,87.498,2,0
+118,MCTS_PUCT (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,96,849.62,251.65,51.764,0,2
+119,Kingsrow,MCTS_PUCT (DB),1.0,White,Kingsrow,0,Elimination / Block,139,707.02,854.22,106.878,2,0
+120,MCTS_PUCT (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,98,814.4,776.03,76.346,0,2
+121,Kingsrow,MCTS_PUCT (DB),1.0,White,Kingsrow,0,Elimination / Block,89,759.53,797.86,67.732,2,0
+122,MCTS_PUCT (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,118,875.25,1005.09,109.066,0,3
+123,Kingsrow,MCTS_PUCT (DB),1.0,White,Kingsrow,0,Elimination / Block,55,833.14,811.43,43.595,5,2
+124,MCTS_PUCT (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,82,783.26,1021.54,72.196,2,5
+125,Kingsrow,MCTS_PUCT (DB),1.0,White,Kingsrow,0,Elimination / Block,119,851.15,809.63,97.182,2,0
+126,MCTS_PUCT (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,122,887.4,872.49,105.599,0,1
+127,Kingsrow,MCTS_PUCT (DB),1.0,White,Kingsrow,0,Elimination / Block,69,794.33,729.5,51.084,2,1
+128,MCTS_PUCT (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,100,813.39,875.69,82.77,0,2
+129,Kingsrow,MCTS_UCB1 (DB),1.0,White,Kingsrow,0,Elimination / Block,123,977.09,867.2,111.641,3,0
+130,MCTS_UCB1 (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,112,855.66,928.73,98.149,0,3
+131,Kingsrow,MCTS_UCB1 (DB),1.0,White,Kingsrow,0,Elimination / Block,69,943.58,758.22,57.106,2,0
+132,MCTS_UCB1 (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,118,897.31,938.59,106.488,0,2
+133,Kingsrow,MCTS_UCB1 (DB),1.0,White,Kingsrow,0,Elimination / Block,95,506.82,781.67,59.782,2,0
+134,MCTS_UCB1 (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,72,743.57,806.67,54.262,0,4
+135,Kingsrow,MCTS_UCB1 (DB),1.0,White,Kingsrow,0,Elimination / Block,71,722.5,735.96,50.314,3,0
+136,MCTS_UCB1 (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,104,881.44,829.65,87.273,0,2
+137,Kingsrow,MCTS_UCB1 (DB),1.0,White,Kingsrow,0,Elimination / Block,79,914.73,869.78,68.73,5,1
+138,MCTS_UCB1 (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,72,743.88,834.55,55.249,0,4
+139,Kingsrow,MCTS_UCB1 (DB),1.0,White,Kingsrow,0,Elimination / Block,91,830.89,841.92,74.439,3,1
+140,MCTS_UCB1 (DB),Kingsrow,1.0,Draw,Draw,1,Max Plies Limit (250),250,938.29,207.91,142.143,2,2
+141,Kingsrow,MCTS_UCB1 (DB),1.0,White,Kingsrow,0,Elimination / Block,63,671.14,634.01,39.829,3,0
+142,MCTS_UCB1 (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,106,732.66,508.17,64.529,0,2
+143,Kingsrow,MCTS_UCB1 (DB),1.0,White,Kingsrow,0,Elimination / Block,123,810.99,817.7,98.539,2,0
+144,MCTS_UCB1 (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,108,853.49,977.37,97.042,1,3
+145,Kingsrow,MCTS_UCB1 (DB),1.0,White,Kingsrow,0,Elimination / Block,89,461.95,769.2,53.405,2,0
+146,MCTS_UCB1 (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,102,881.59,1100.03,99.086,2,4
+147,Kingsrow,MCTS_UCB1 (DB),1.0,White,Kingsrow,0,Elimination / Block,123,559.78,868.97,86.291,2,0
+148,MCTS_UCB1 (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,124,870.13,901.96,108.104,0,2
+149,Kingsrow,MCTS_UCB1 (DB),1.0,White,Kingsrow,0,Elimination / Block,95,836.24,762.26,74.372,2,0
+150,MCTS_UCB1 (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,84,781.53,920.38,69.787,0,2
+151,Kingsrow,MCTS_UCB1 (DB),1.0,White,Kingsrow,0,Elimination / Block,67,908.64,751.1,54.024,3,1
+152,MCTS_UCB1 (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,76,730.81,800.74,56.672,0,1
+153,Kingsrow,MCTS_UCB1 (DB),1.0,White,Kingsrow,0,Elimination / Block,81,914.84,795.78,67.634,3,1
+154,MCTS_UCB1 (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,74,861.49,924.95,64.316,3,8
+155,Kingsrow,MCTS_UCB1 (DB),1.0,White,Kingsrow,0,Elimination / Block,95,938.5,805.22,81.155,3,0
+156,MCTS_UCB1 (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,110,779.08,763.37,83.297,0,2
+157,Kingsrow,MCTS_UCB1 (DB),1.0,White,Kingsrow,0,Elimination / Block,97,1005.42,766.22,84.277,3,0
+158,MCTS_UCB1 (DB),Kingsrow,1.0,Black,Kingsrow,0,Elimination / Block,88,767.89,1010.94,76.494,0,3
+159,Kingsrow,MCTS_UCB1 (DB),1.0,White,Kingsrow,0,Elimination / Block,85,1001.53,756.52,73.085,4,0
+160,MCTS_UCB1 (DB),Kingsrow,1.0,Draw,Draw,1,Max Plies Limit (250),250,922.9,182.29,137.057,1,1

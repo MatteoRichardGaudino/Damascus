@@ -309,12 +309,12 @@ static void step_time_preset(double *val, int delta) {
     *val = s_time_presets[new_idx];
 }
 
-static const float  s_mcts_alphas[]       = { 0.50f, 0.80f, 0.91f, 1.00f, 1.4142f, 1.80f, 2.20f, 2.80f };
-static const int    s_mcts_depths[]       = { 20, 35, 42, 50, 70, 100, 150, 200 };
-static const float  s_mcts_epsilons[]     = { 0.05f, 0.10f, 0.15f, 0.17f, 0.20f, 0.255f, 0.30f, 0.40f, 1.00f };
-static const float  s_puct_c_pucts[]      = { 0.50f, 0.80f, 1.00f, 1.50f, 2.00f, 2.50f, 3.18f, 3.50f };
-static const float  s_puct_temperatures[] = { 0.20f, 0.50f, 0.80f, 1.00f, 1.34f, 1.50f, 2.00f };
-static const int    s_puct_depths[]       = { 20, 35, 50, 70, 100, 150, 200 };
+static const float  s_mcts_alphas[]       = { 0.40f, 0.50f, 0.64f, 0.80f, 1.00f, 1.4142f, 1.80f, 2.20f, 2.80f };
+static const int    s_mcts_depths[]       = { 20, 35, 42, 51, 70, 100, 150, 200 };
+static const float  s_mcts_epsilons[]     = { 0.05f, 0.10f, 0.15f, 0.20f, 0.255f, 0.31f, 0.40f, 1.00f };
+static const float  s_puct_c_pucts[]      = { 0.50f, 0.80f, 1.00f, 1.50f, 2.00f, 2.59f, 3.18f, 3.50f };
+static const float  s_puct_temperatures[] = { 0.20f, 0.50f, 0.80f, 1.00f, 1.34f, 1.50f, 2.00f, 2.20f };
+static const int    s_puct_depths[]       = { 20, 35, 50, 70, 100, 112, 150, 200 };
 
 static void step_float_val(float *val, const float *arr, int count, int delta) {
     int cur_idx = 0;
@@ -691,8 +691,7 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             bool book_active0 = book_avail0 && ui->engine_config.mcts_use_book && (ui->engine_config.book_mode != BOOK_MODE_OFF);
             const char *bk_str0 = "DISATTIVATO";
             if (book_active0) {
-                if (ui->engine_config.book_mode == BOOK_MODE_PUCT_GUIDED) bk_str0 = "ALBERO GUIDATO";
-                else if (ui->engine_config.book_mode == BOOK_MODE_BEST) bk_str0 = "MIGLIORI (BEST)";
+                if (ui->engine_config.book_mode == BOOK_MODE_BEST) bk_str0 = "MIGLIORI (BEST)";
                 else if (ui->engine_config.book_mode == BOOK_MODE_GOOD) bk_str0 = "VARIATE (GOOD)";
                 else if (ui->engine_config.book_mode == BOOK_MODE_ALL) bk_str0 = "TUTTE LE MOSSE";
             }
@@ -829,26 +828,30 @@ void ui_render(UIContext *ui, GameState *game, GLuint ui_shader) {
             ui_add_text("LIBRO APERTURE (OPENING BOOK):", row_x, r6_y + 7.0f * S, 1.05f * S, text_white);
             
             bool book_avail1 = opening_book_is_available(ui->engine_config.book_backend, ui->engine_config.book_custom_path);
-            bool book_active1 = book_avail1 && ui->engine_config.puct_use_book && (ui->engine_config.book_mode != BOOK_MODE_OFF);
+            bool book_active1 = book_avail1 && (ui->engine_config.puct_use_guided_book || (ui->engine_config.puct_use_book && ui->engine_config.book_mode != BOOK_MODE_OFF));
             const char *bk_str1 = "DISATTIVATO";
             if (book_active1) {
-                if (ui->engine_config.book_mode == BOOK_MODE_PUCT_GUIDED) bk_str1 = "PUCT GUIDATO";
+                if (ui->engine_config.puct_use_guided_book) bk_str1 = "GUIDATO (BLENDING)";
                 else if (ui->engine_config.book_mode == BOOK_MODE_BEST) bk_str1 = "MIGLIORI (BEST)";
                 else if (ui->engine_config.book_mode == BOOK_MODE_GOOD) bk_str1 = "VARIATE (GOOD)";
                 else if (ui->engine_config.book_mode == BOOK_MODE_ALL) bk_str1 = "TUTTE LE MOSSE";
             }
-            vec4 *bk_btn_c1 = (!book_avail1 && ui->engine_config.puct_use_book) ? &btn_danger : 
+            vec4 *bk_btn_c1 = (!book_avail1 && (ui->engine_config.puct_use_book || ui->engine_config.puct_use_guided_book)) ? &btn_danger : 
                               (book_active1 ? &btn_start : &btn_normal);
             float bk_btn_w1 = 225.0f * S;
             ui_add_quad(step_x - 40.0f * S, r6_y, bk_btn_w1, 26.0f * S, *bk_btn_c1);
             ui_add_text_centered(bk_str1, step_x - 40.0f * S + bk_btn_w1 * 0.5f, r6_y + 13.0f * S, 0.90f * S, text_white);
             
-            if (!ui->engine_config.puct_use_book) {
-                ui_add_text("[LIBRO APERTURE: DISATTIVATO DA PROFILO GA]", row_x, r6_y + 26.0f * S, 0.85f * S, text_sub);
-            } else if (!book_avail1) {
+            if (!book_avail1) {
                 ui_add_text("[FILE .ODB MANCANTE - DISABILITATO]", row_x, r6_y + 26.0f * S, 0.85f * S, text_red);
+            } else if (book_active1) {
+                if (ui->engine_config.puct_use_guided_book) {
+                    ui_add_text("[LIBRO APERTURE: GUIDATO CON PRIOR BLENDING]", row_x, r6_y + 26.0f * S, 0.85f * S, text_green);
+                } else {
+                    ui_add_text("[LIBRO APERTURE: INSTANT-PLAY ATTIVO]", row_x, r6_y + 26.0f * S, 0.85f * S, text_green);
+                }
             } else {
-                ui_add_text("[LIBRO APERTURE: 1.76M POSIZIONI ATTIVO]", row_x, r6_y + 26.0f * S, 0.85f * S, text_green);
+                ui_add_text("[LIBRO APERTURE: DISATTIVATO]", row_x, r6_y + 26.0f * S, 0.85f * S, text_sub);
             }
 
             // Parameter 7: Database backend selector
@@ -1416,19 +1419,16 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
                 if (!avail) {
                     ui->engine_config.mcts_use_book = false;
                 } else {
-                    if (!ui->engine_config.mcts_use_book) {
+                    if (!ui->engine_config.mcts_use_book || ui->engine_config.book_mode == BOOK_MODE_OFF) {
                         ui->engine_config.mcts_use_book = true;
                         ui->engine_config.book_mode = BOOK_MODE_GOOD;
+                    } else if (ui->engine_config.book_mode == BOOK_MODE_GOOD) {
+                        ui->engine_config.book_mode = BOOK_MODE_BEST;
+                    } else if (ui->engine_config.book_mode == BOOK_MODE_BEST) {
+                        ui->engine_config.book_mode = BOOK_MODE_ALL;
                     } else {
-                        BookPlayMode next_m = (ui->engine_config.book_mode == BOOK_MODE_GOOD) ? BOOK_MODE_BEST :
-                                              (ui->engine_config.book_mode == BOOK_MODE_BEST) ? BOOK_MODE_ALL :
-                                              (ui->engine_config.book_mode == BOOK_MODE_ALL) ? BOOK_MODE_PUCT_GUIDED : BOOK_MODE_OFF;
-                        if (next_m == BOOK_MODE_OFF) {
-                            ui->engine_config.mcts_use_book = false;
-                        } else {
-                            ui->engine_config.book_mode = next_m;
-                            ui->engine_config.mcts_use_book = true;
-                        }
+                        ui->engine_config.book_mode = BOOK_MODE_OFF;
+                        ui->engine_config.mcts_use_book = false;
                     }
                 }
                 return true;
@@ -1535,20 +1535,29 @@ bool ui_handle_click(UIContext *ui, GameState *game, double mouse_x, double mous
                 bool avail = opening_book_is_available(ui->engine_config.book_backend, ui->engine_config.book_custom_path);
                 if (!avail) {
                     ui->engine_config.puct_use_book = false;
+                    ui->engine_config.puct_use_guided_book = false;
                 } else {
-                    if (!ui->engine_config.puct_use_book) {
+                    if (!ui->engine_config.puct_use_guided_book && !ui->engine_config.puct_use_book) {
+                        // Activate guided blending
+                        ui->engine_config.puct_use_guided_book = true;
+                        ui->engine_config.puct_use_book = false;
+                        ui->engine_config.book_mode = BOOK_MODE_OFF;
+                    } else if (ui->engine_config.puct_use_guided_book) {
+                        // Switch to Instant GOOD
+                        ui->engine_config.puct_use_guided_book = false;
                         ui->engine_config.puct_use_book = true;
                         ui->engine_config.book_mode = BOOK_MODE_GOOD;
+                    } else if (ui->engine_config.book_mode == BOOK_MODE_GOOD) {
+                        // Switch to Instant BEST
+                        ui->engine_config.book_mode = BOOK_MODE_BEST;
+                    } else if (ui->engine_config.book_mode == BOOK_MODE_BEST) {
+                        // Switch to Instant ALL
+                        ui->engine_config.book_mode = BOOK_MODE_ALL;
                     } else {
-                        BookPlayMode next_m = (ui->engine_config.book_mode == BOOK_MODE_GOOD) ? BOOK_MODE_PUCT_GUIDED :
-                                              (ui->engine_config.book_mode == BOOK_MODE_PUCT_GUIDED) ? BOOK_MODE_BEST :
-                                              (ui->engine_config.book_mode == BOOK_MODE_BEST) ? BOOK_MODE_ALL : BOOK_MODE_OFF;
-                        if (next_m == BOOK_MODE_OFF) {
-                            ui->engine_config.puct_use_book = false;
-                        } else {
-                            ui->engine_config.book_mode = next_m;
-                            ui->engine_config.puct_use_book = true;
-                        }
+                        // Turn OFF
+                        ui->engine_config.puct_use_guided_book = false;
+                        ui->engine_config.puct_use_book = false;
+                        ui->engine_config.book_mode = BOOK_MODE_OFF;
                     }
                 }
                 return true;

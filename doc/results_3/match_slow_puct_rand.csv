@@ -1,0 +1,11 @@
+game_id,white_engine,black_engine,time_budget,winner_color,winner_engine,is_draw,reason,plies,white_avg_ms,black_avg_ms,duration_sec,white_pieces,black_pieces
+1,MCTS_PUCT (No-DB),Random,3.000,White,MCTS_PUCT (No-DB),0,"Elimination / Block",45,1682.26,0.00,37.014,5,0
+2,Random,MCTS_PUCT (No-DB),3.000,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",40,0.00,1441.95,27.399,0,6
+3,MCTS_PUCT (No-DB),Random,3.000,White,MCTS_PUCT (No-DB),0,"Elimination / Block",33,1343.52,0.00,21.500,8,0
+4,Random,MCTS_PUCT (No-DB),3.000,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",42,0.00,1155.62,23.120,0,7
+5,MCTS_PUCT (No-DB),Random,3.000,White,MCTS_PUCT (No-DB),0,"Elimination / Block",39,1238.64,0.00,23.539,8,0
+6,Random,MCTS_PUCT (No-DB),3.000,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",44,0.00,1630.28,34.240,0,7
+7,MCTS_PUCT (No-DB),Random,3.000,White,MCTS_PUCT (No-DB),0,"Elimination / Block",41,1777.00,0.00,35.542,5,0
+8,Random,MCTS_PUCT (No-DB),3.000,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",42,0.00,1359.28,27.192,0,9
+9,MCTS_PUCT (No-DB),Random,3.000,White,MCTS_PUCT (No-DB),0,"Elimination / Block",41,1488.32,0.00,29.769,9,0
+10,Random,MCTS_PUCT (No-DB),3.000,Black,MCTS_PUCT (No-DB),0,"Elimination / Block",48,0.00,1472.47,33.869,0,6

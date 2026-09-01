@@ -749,42 +749,64 @@ The effectiveness of Monte Carlo Tree Search engines depends heavily on the harm
 
 Because the hyperparameter landscape of MCTS is non-linear, multi-dimensional, non-convex, and lacks analytical gradients, Damascus implements a dedicated **Genetic Algorithm (GA) framework** in [`src/tune_ga.h`](file:///c:/Users/Matte/CLionProjects/Damascus/src/tune_ga.h) and [`src/tune_ga.c`](file:///c:/Users/Matte/CLionProjects/Damascus/src/tune_ga.c) for automated evolutionary self-play tuning.
 
-### 10.1 Chromosome Representation (Engine Genotype)
+### 10.1 Structured Engine Genotypes & Zero-Ghost-Gene Chromosome
 
-Each candidate configuration in the population is represented as an individual `Chromosome` embodying both continuous and discrete parameters:
+To eliminate inactive "ghost genes" and structural invalidities, Damascus cleanly separates the genome architectures of `MCTS_UCB1` and `MCTS_PUCT` using dedicated sub-structs unified in a tagged union `Chromosome`:
 
 ```c
+// Dedicated Genome for MCTS UCB1
 typedef struct {
-    EngineType target_engine;        // Target architecture: MCTS_PUCT or MCTS_UCB1
+    float        exploration_alpha;     // Exploration constant alpha in [0.2, 3.5]
+    BookPlayMode book_mode;             // BOOK_MODE_OFF, BOOK_MODE_BEST, BOOK_MODE_GOOD, BOOK_MODE_ALL
+    float        book_temperature;      // Temperature for move sampling [0.1, 3.0] (active only if GOOD or ALL)
+} UCB1Genome;
 
-    // PUCT specific genes
-    float      puct_c_puct;          // Exploration constant c_puct in [0.5, 3.5]
-    float      puct_temperature;     // Policy temperature tau in [0.1, 2.5]
-    
-    // UCB1 specific genes
-    float      mcts_exploration;     // Exploration constant alpha in [0.2, 3.0]
-    
-    // Common MCTS simulation genes
-    float      rollout_epsilon;      // Epsilon-greedy rollout rate in [0.02, 0.45]
-    int        max_rollout_depth;    // Simulation cutoff depth in [20, 150]
-    
-    // Opening Book genes
-    float      book_temperature;     // Softmax temperature for book in [0.1, 3.0]
-    BookPlayMode book_mode;          // BEST, GOOD, PUCT_GUIDED, ALL
-    bool       use_book;             // Opening book toggle
-    
-    // Endgame Tablebase genes
-    bool       use_db;               // 8-piece WLD tablebase toggle
+// Dedicated Genome for MCTS PUCT
+typedef struct {
+    float        c_puct;                // Exploration constant c_puct in [0.5, 5.0]
+    float        puct_temperature;      // Policy Softmax temperature tau in [0.1, 3.0]
+    bool         use_guided_book;       // PUCT prior blending toggle
+    float        lambda_book;           // Blending factor lambda in [0.0, 1.0] (active only if use_guided_book)
+    BookPlayMode book_mode;             // Instant book mode (active only if !use_guided_book)
+    float        book_temperature;      // Temperature [0.1, 3.0] (active only if !use_guided_book && GOOD/ALL)
+} PUCTGenome;
+
+// Unified Chromosome with Common MCTS Genes & Tagged Union
+typedef struct {
+    EngineType target_engine;           // Discriminator: MCTS_PUCT or MCTS_UCB1
+
+    // Common MCTS / Simulation parameters
+    float      rollout_epsilon;         // Epsilon-greedy rollout rate in [0.01, 0.50]
+    int        max_rollout_depth;       // Simulation cutoff depth in [10, 150]
+    bool       use_db;                  // 8-piece Endgame Tablebase toggle
+
+    // Tagged Engine Genomes
+    union {
+        UCB1Genome ucb1;
+        PUCTGenome puct;
+    };
+
+    // Match & Fitness Stats
+    int        id;
+    int        generation;
+    int        games_played;
+    int        wins, draws, losses;
+    double     points, score_pct, elo, fitness;
+    double     total_time_spent;
+    int        total_moves;
 } Chromosome;
 ```
 
-All continuous genes are bounded and clamped via `ga_chromosome_clamp()` to enforce physically valid search bounds and prevent numerical instabilities (such as negative temperatures or zero exploration).
+#### Zero-Ghost-Gene Sanitization (`ga_chromosome_sanitize`)
+Before evaluating fitness or computing checksums, `ga_chromosome_sanitize()` enforces deterministic normalization on inactive genes:
+* **UCB1**: If `book_mode == BOOK_MODE_OFF` or `BOOK_MODE_BEST`, `book_temperature` is set to $0.0$.
+* **PUCT**: If `use_guided_book == true`, instant book modes and temperatures are forced to `BOOK_MODE_OFF` and $0.0$; if `use_guided_book == false`, `lambda_book` is set to $0.0$, and `book_temperature` is zeroed when not in sampling modes (`GOOD`/`ALL`).
 
 ### 10.2 Population Initialization & Seeding
 
 The population of size $N$ (default $N = 16$ or $24$) is instantiated in `ga_population_init()`:
-* **Individual #0 (Baseline Seed)**: Initialized with default human-engineered hyperparameters (e.g. $c_{\text{puct}} = 1.5$, $\tau = 1.0$, $\alpha = 1.414$, $\epsilon = 0.15$, $D_{\max} = 70$) to ensure that the initial generation contains a competitive baseline and prevent degenerative early convergence.
-* **Individuals #1 through #N-1**: Uniformly sampled across valid hyperparameter intervals using a fast 32-bit PRNG (`xorshift32`).
+* **Individual #0 (Baseline Seed)**: Initialized with verified baseline hyperparameters (e.g. for PUCT: $c_{\text{puct}} = 3.18$, $\tau = 1.34$, $\lambda = 0.75$, $\epsilon = 0.25$, $D_{\max} = 70$; for UCB1: $\alpha = 0.91$, $D_{\max} = 42$, $\epsilon = 0.17$, `GOOD` mode, $\tau_{\text{book}} = 2.28$).
+* **Individuals #1 through #N-1**: Uniformly randomized across valid intervals using a 32-bit PRNG (`xorshift32`) with conditional sampling of active modes.
 
 ### 10.3 Fitness Evaluation via Parallel Round-Robin Tournaments
 
@@ -817,7 +839,7 @@ Rather than evaluating configurations against a static heuristic, Damascus asses
 1. **Paired Encounters**: Every pair of individuals $(i, j)$ plays $K$ games (default $K = 2$).
 2. **Alternating Colors**: Each pair alternates playing White and Black to eliminate first-move initiative bias.
 3. **Opening Randomization**: The first 2 half-moves (`opening_plies = 2`) are played pseudo-randomly using a deterministic seed `(gen * 10007 + i * 101 + j * 17 + g)`. This prevents deterministic search trees from repeating identical games across generations.
-4. **Multi-Threaded Work Distribution**: A pool of POSIX / Windows worker threads (`ga_eval_worker_thread`) pulls match tasks dynamically from a thread-safe mutex-guarded queue.
+4. **Multi-Threaded Work Distribution**: A pool of worker threads (`ga_eval_worker_thread`) pulls match tasks dynamically from a thread-safe mutex-guarded queue.
 
 #### Composite Fitness Formulation
 Upon tournament completion, each individual receives a composite fitness score balancing win rate, decisive conversion, and move latency:
@@ -845,14 +867,12 @@ $$\text{child}_1 = \alpha \cdot p_1 + (1 - \alpha) \cdot p_2$$
 
 $$\text{child}_2 = (1 - \alpha) \cdot p_1 + \alpha \cdot p_2$$
 
-Discrete parameters (`book_mode`, `use_book`, `use_db`) are inherited from either parent with uniform $50\%$ probability.
+Discrete genes (`book_mode`, `use_guided_book`, `use_db`) are inherited from either parent with uniform $50\%$ probability.
 
-#### 3. Mutation (Gaussian Perturbation)
-With probability `mutation_rate` (default $20\%$) and scale `mutation_scale` (default $15\%$), genes are perturbed:
-
-$$\text{gene}' = \text{gene} + (2r - 1) \cdot \text{scale} \cdot \Delta_{\text{range}}$$
-
-Discrete and boolean parameters occasionally undergo stochastic bit-flips or category shifts.
+#### 3. Conditional Mutation
+With probability `mutation_rate` (default $20\%$) and scale `mutation_scale` (default $15\%$), active genes are perturbed. Crucially, mutations are **conditional on active branches**:
+* `book_temperature` is only mutated if `book_mode` is `BOOK_MODE_GOOD` or `BOOK_MODE_ALL`.
+* In PUCT, `lambda_book` is only mutated if `use_guided_book == true`, while instant-play modes mutate only when `use_guided_book == false`.
 
 ### 10.5 Elitism & Evolutionary Progression
 

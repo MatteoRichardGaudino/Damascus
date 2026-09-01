@@ -16,27 +16,36 @@
 #define GA_DEFAULT_CROSSOVER_RATE 0.80f
 #define GA_DEFAULT_ELITE_COUNT 2
 
+// Dedicated Genome for MCTS UCB1
+typedef struct {
+    float        exploration_alpha;     // Alpha exploration constant [0.2, 3.5]
+    BookPlayMode book_mode;             // BOOK_MODE_OFF, BOOK_MODE_BEST, BOOK_MODE_GOOD, BOOK_MODE_ALL
+    float        book_temperature;      // Temperature for move sampling [0.1, 3.0] (active only if GOOD or ALL)
+} UCB1Genome;
+
+// Dedicated Genome for MCTS PUCT
+typedef struct {
+    float        c_puct;                // Exploration constant c_puct [0.5, 5.0]
+    float        puct_temperature;      // Policy Softmax temperature tau [0.1, 3.0]
+    bool         use_guided_book;       // PUCT prior blending toggle
+    float        lambda_book;           // Blending factor lambda in [0.0, 1.0] (active only if use_guided_book)
+    BookPlayMode book_mode;             // Instant book mode (active only if !use_guided_book)
+    float        book_temperature;      // Temperature [0.1, 3.0] (active only if !use_guided_book && GOOD/ALL)
+} PUCTGenome;
+
 typedef struct {
     EngineType target_engine; // ENGINE_TYPE_MCTS_PUCT or ENGINE_TYPE_MCTS_UCB1
 
-    // PUCT specific
-    float      puct_c_puct;             // [0.5, 3.5]
-    float      puct_temperature;        // [0.1, 2.5]
-    
-    // UCB1 specific
-    float      mcts_exploration;        // [0.2, 3.0]
-    
     // Common MCTS / Simulation parameters
-    float      rollout_epsilon;         // [0.02, 0.50]
-    int        max_rollout_depth;       // [20, 150]
+    float      rollout_epsilon;         // [0.01, 0.50]
+    int        max_rollout_depth;       // [10, 150]
+    bool       use_db;                  // Endgame Tablebase parameter
     
-    // Opening Book parameters
-    float      book_temperature;        // [0.1, 3.0]
-    BookPlayMode book_mode;             // BEST, GOOD, ALL, PUCT_GUIDED, OFF
-    bool       use_book;
-    
-    // Endgame Tablebase parameter
-    bool       use_db;
+    // Engine-Specific Genomes (Tagged Union)
+    union {
+        UCB1Genome ucb1;
+        PUCTGenome puct;
+    };
 
     // Fitness and Tournament evaluation stats
     int        id;
@@ -92,6 +101,7 @@ typedef struct {
 // GA Core API
 void ga_config_init_default(GAConfig *cfg, EngineType target_engine);
 void ga_chromosome_init_default(Chromosome *c, EngineType target_engine);
+void ga_chromosome_sanitize(Chromosome *c);
 void ga_chromosome_randomize(Chromosome *c, EngineType target_engine, uint32_t *rng);
 void ga_chromosome_clamp(Chromosome *c);
 void ga_chromosome_apply_to_config(const Chromosome *c, EngineConfig *cfg);

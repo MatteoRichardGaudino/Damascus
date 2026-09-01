@@ -145,10 +145,6 @@ static void test_selection_modes(void) {
     Move m_off = opening_book_select_move(&game, BOOK_MODE_OFF, 0.5f, &rng);
     assert(move_is_none(m_off));
 
-    // Mode PUCT_GUIDED (should return NONE to let PUCT search use priors)
-    Move m_puct = opening_book_select_move(&game, BOOK_MODE_PUCT_GUIDED, 0.5f, &rng);
-    assert(move_is_none(m_puct));
-
     // Mode BEST
     Move m_best = opening_book_select_move(&game, BOOK_MODE_BEST, 0.0f, &rng);
     assert(!move_is_none(m_best));
@@ -236,7 +232,7 @@ static void test_mcts_puct_integration(void) {
     printf("  -> MCTS PUCT instant book move: %d -> %d\n", MOVE_FROM(instant_move) + 1, MOVE_TO(instant_move) + 1);
 
     // 2. PUCT Guided Mode with Tree Search & Prior Blending
-    engine_mcts_puct_set_book_mode(puct_st, BOOK_MODE_PUCT_GUIDED);
+    engine_mcts_puct_set_guided_book(puct_st, true, 0.75f);
     engine_mcts_puct_set_time_budget(puct_st, 0.05);
     Move guided_move = engine_mcts_puct_get_move(puct_st, &game);
     assert(!move_is_none(guided_move));
@@ -250,7 +246,7 @@ static void test_mcts_puct_integration(void) {
 }
 
 static void test_mcts_ucb1_integration(void) {
-    printf("[Test 9] Testing MCTS UCB1 Opening Book integration (Instant & Warm-Start)...\n");
+    printf("[Test 9] Testing MCTS UCB1 Opening Book integration (Instant & Tree Search)...\n");
 
     bool ok = opening_book_init(BOOK_BACKEND_KINGSROW_ODB, NULL);
     if (!ok) {
@@ -272,14 +268,14 @@ static void test_mcts_ucb1_integration(void) {
     assert(!move_is_none(instant_move));
     printf("  -> MCTS UCB1 instant book move: %d -> %d\n", MOVE_FROM(instant_move) + 1, MOVE_TO(instant_move) + 1);
 
-    // 2. Warm-started tree search
-    engine_mcts_ucb1_set_book_mode(ucb1_st, BOOK_MODE_PUCT_GUIDED); // guided / tree search with warm start
+    // 2. Tree search with Book OFF
+    engine_mcts_ucb1_set_book_mode(ucb1_st, BOOK_MODE_OFF);
     engine_mcts_ucb1_set_time_budget(ucb1_st, 0.05);
     Move searched_move = engine_mcts_ucb1_get_move(ucb1_st, &game);
     assert(!move_is_none(searched_move));
     uint32_t visits = engine_mcts_ucb1_get_root_visits(ucb1_st);
     assert(visits > 0);
-    printf("  -> MCTS UCB1 warm-started move: %d -> %d (root visits: %u)\n",
+    printf("  -> MCTS UCB1 search move: %d -> %d (root visits: %u)\n",
            MOVE_FROM(searched_move) + 1, MOVE_TO(searched_move) + 1, visits);
 
     engine_mcts_ucb1_cleanup(ucb1_st);

@@ -9,10 +9,10 @@
 
 #define MCTS_MAX_NODES              2000000
 #define MCTS_SAFETY_THRESHOLD_NODES 1600000
-#define MCTS_DEFAULT_EXPLORATION    0.9129f
+#define MCTS_DEFAULT_EXPLORATION    0.6422f
 #define MCTS_DEFAULT_TIME_BUDGET    1.0
-#define MCTS_MAX_ROLLOUT_DEPTH      42
-#define MCTS_DEFAULT_ROLLOUT_EPSILON 0.1701f
+#define MCTS_MAX_ROLLOUT_DEPTH      51
+#define MCTS_DEFAULT_ROLLOUT_EPSILON 0.3128f
 
 // Compact Node Structure using 32-bit indices and 64-bit Zobrist key
 typedef struct {

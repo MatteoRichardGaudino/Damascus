@@ -1,0 +1,31 @@
+game_id,white_engine,black_engine,time_budget,winner_color,winner_engine,is_draw,reason,plies,white_avg_ms,black_avg_ms,duration_sec,white_pieces,black_pieces
+1,MCTS_UCB1 (No-DB),Kingsrow,0.200,Black,Kingsrow,0,"Elimination / Block",104,172.78,217.61,19.916,1,3
+2,Kingsrow,MCTS_UCB1 (No-DB),0.200,White,Kingsrow,0,"Elimination / Block",67,187.68,162.79,11.407,4,1
+3,MCTS_UCB1 (No-DB),Kingsrow,0.200,Black,Kingsrow,0,"Elimination / Block",146,169.73,199.61,26.603,0,2
+4,Kingsrow,MCTS_UCB1 (No-DB),0.200,White,Kingsrow,0,"Elimination / Block",87,161.48,152.64,13.360,2,0
+5,MCTS_UCB1 (No-DB),Kingsrow,0.200,Black,Kingsrow,0,"Elimination / Block",126,174.40,224.32,24.728,0,1
+6,Kingsrow,MCTS_UCB1 (No-DB),0.200,White,Kingsrow,0,"Elimination / Block",77,174.16,162.41,12.632,3,1
+7,MCTS_UCB1 (No-DB),Kingsrow,0.200,Black,Kingsrow,0,"Elimination / Block",78,147.69,195.25,13.039,0,2
+8,Kingsrow,MCTS_UCB1 (No-DB),0.200,White,Kingsrow,0,"Elimination / Block",101,228.32,163.55,19.436,2,0
+9,MCTS_UCB1 (No-DB),Kingsrow,0.200,Black,Kingsrow,0,"Elimination / Block",80,159.21,150.00,12.064,0,2
+10,Kingsrow,MCTS_UCB1 (No-DB),0.200,White,Kingsrow,0,"Elimination / Block",135,200.99,166.95,24.494,1,0
+11,MCTS_UCB1 (No-DB),Kingsrow,0.200,Black,Kingsrow,0,"Elimination / Block",154,179.18,180.72,27.362,0,2
+12,Kingsrow,MCTS_UCB1 (No-DB),0.200,White,Kingsrow,0,"Elimination / Block",109,192.57,162.52,19.019,1,0
+13,MCTS_UCB1 (No-DB),Kingsrow,0.200,Black,Kingsrow,0,"Elimination / Block",106,165.64,200.50,19.046,0,2
+14,Kingsrow,MCTS_UCB1 (No-DB),0.200,White,Kingsrow,0,"Elimination / Block",79,191.99,147.69,13.104,2,0
+15,MCTS_UCB1 (No-DB),Kingsrow,0.200,Black,Kingsrow,0,"Elimination / Block",114,164.53,160.49,18.208,0,2
+16,Kingsrow,MCTS_UCB1 (No-DB),0.200,White,Kingsrow,0,"Elimination / Block",79,200.59,168.64,14.236,3,1
+17,MCTS_UCB1 (No-DB),Kingsrow,0.200,Black,Kingsrow,0,"Elimination / Block",92,164.68,191.67,16.042,0,2
+18,Kingsrow,MCTS_UCB1 (No-DB),0.200,White,Kingsrow,0,"Elimination / Block",77,195.62,156.98,13.247,4,0
+19,MCTS_UCB1 (No-DB),Kingsrow,0.200,Black,Kingsrow,0,"Elimination / Block",112,167.48,194.52,19.918,0,2
+20,Kingsrow,MCTS_UCB1 (No-DB),0.200,White,Kingsrow,0,"Elimination / Block",79,203.98,152.89,13.770,3,1
+21,MCTS_UCB1 (No-DB),Kingsrow,0.200,Draw,Draw,1,"Max Plies Limit (250)",250,190.54,48.86,29.701,3,3
+22,Kingsrow,MCTS_UCB1 (No-DB),0.200,White,Kingsrow,0,"Elimination / Block",89,158.46,149.12,13.390,1,0
+23,MCTS_UCB1 (No-DB),Kingsrow,0.200,Black,Kingsrow,0,"Elimination / Block",78,158.20,196.51,13.484,0,4
+24,Kingsrow,MCTS_UCB1 (No-DB),0.200,White,Kingsrow,0,"Elimination / Block",81,211.75,164.30,14.883,2,0
+25,MCTS_UCB1 (No-DB),Kingsrow,0.200,Black,Kingsrow,0,"Elimination / Block",130,175.23,226.63,25.726,0,2
+26,Kingsrow,MCTS_UCB1 (No-DB),0.200,Draw,Draw,1,"Max Plies Limit (250)",250,198.21,187.31,47.818,2,3
+27,MCTS_UCB1 (No-DB),Kingsrow,0.200,Black,Kingsrow,0,"Elimination / Block",92,160.24,164.96,14.639,1,2
+28,Kingsrow,MCTS_UCB1 (No-DB),0.200,White,Kingsrow,0,"Elimination / Block",109,204.99,166.25,19.887,3,0
+29,MCTS_UCB1 (No-DB),Kingsrow,0.200,Black,Kingsrow,0,"Elimination / Block",132,166.37,190.05,23.174,0,2
+30,Kingsrow,MCTS_UCB1 (No-DB),0.200,Draw,Draw,1,"3-Fold Repetition",165,56.64,180.43,19.269,1,1

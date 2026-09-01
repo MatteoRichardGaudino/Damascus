@@ -25,6 +25,8 @@ typedef struct {
     float              rollout_epsilon;
     bool               use_db;
     bool               use_book;
+    bool               use_guided_book;
+    float              lambda_book;
     BookPlayMode       book_mode;
     float              book_temperature;
     bool               debug_log;
@@ -111,8 +113,8 @@ float puct_compute_heuristic_compact(const CompactState *state, Move move) {
 }
 
 // Compute Softmax Prior Policy P(s, a) = exp(H(s, a) / tau) / sum(exp(H(s, b) / tau))
-// Blended with opening book distribution P_book(s, a) when use_book is active
-static void compute_priors(const CompactState *state, const MoveList *moves, float tau, bool use_book, float *priors) {
+// Blended with opening book distribution P_book(s, a) when use_guided_book is active
+static void compute_priors(const CompactState *state, const MoveList *moves, float tau, bool use_guided_book, float lambda_book, float *priors) {
     if (moves->count == 0) return;
     if (moves->count == 1) {
         priors[0] = 1.0f;
@@ -143,11 +145,10 @@ static void compute_priors(const CompactState *state, const MoveList *moves, flo
         priors[i] *= inv_sum;
     }
 
-    // Blend opening book distribution P_book(s, a) if book is enabled and state has entries
-    if (use_book) {
+    // Blend opening book distribution P_book(s, a) if guided book is enabled and state has entries
+    if (use_guided_book && lambda_book > 0.0001f) {
         BookMoveList book_moves;
         if (opening_book_probe_compact(state, &book_moves) && book_moves.count > 0) {
-            const float lambda_book = 0.75f; // AlphaGo style blending parameter
             float blended[48];
             float sum_blended = 0.0f;
 
@@ -191,6 +192,8 @@ void engine_mcts_puct_init(void **state) {
     st->rollout_epsilon = PUCT_DEFAULT_ROLLOUT_EPSILON;
     st->use_db = false;
     st->use_book = false;
+    st->use_guided_book = false;
+    st->lambda_book = 0.75f;
     st->book_mode = BOOK_MODE_GOOD;
     st->book_temperature = 2.4828f;
     st->debug_log = false;
@@ -260,6 +263,16 @@ void engine_mcts_puct_set_use_db(void *state, bool enable) {
 void engine_mcts_puct_set_use_book(void *state, bool enable) {
     if (state) {
         ((PUCTEngineState*)state)->use_book = enable;
+    }
+}
+
+void engine_mcts_puct_set_guided_book(void *state, bool enable, float lambda) {
+    if (state) {
+        PUCTEngineState *st = (PUCTEngineState*)state;
+        st->use_guided_book = enable;
+        if (lambda < 0.0f) lambda = 0.0f;
+        if (lambda > 1.0f) lambda = 1.0f;
+        st->lambda_book = lambda;
     }
 }
 
@@ -481,7 +494,7 @@ static inline uint32_t puct_select_child(uint32_t node_idx, float c_puct) {
 }
 
 // Expand node in PUCT tree and assign domain heuristic priors, opening book priors, and proof status
-static bool puct_expand_node(uint32_t node_idx, const CompactState *state, const SearchHistory *hist, float temperature, bool use_book, bool use_db, TranspositionTable *tt, uint16_t epoch, uint16_t depth) {
+static bool puct_expand_node(uint32_t node_idx, const CompactState *state, const SearchHistory *hist, float temperature, bool use_guided_book, float lambda_book, bool use_db, TranspositionTable *tt, uint16_t epoch, uint16_t depth) {
     if (node_idx >= s_pool_tail) return false;
     if (s_node_pool[node_idx].first_child_idx != UINT32_MAX && s_node_pool[node_idx].first_child_idx < s_pool_tail) return true;
 
@@ -502,7 +515,7 @@ static bool puct_expand_node(uint32_t node_idx, const CompactState *state, const
     s_node_pool[node_idx].first_child_idx = first_child;
 
     float priors[48];
-    compute_priors(state, &ml, temperature, use_book, priors);
+    compute_priors(state, &ml, temperature, use_guided_book, lambda_book, priors);
 
     for (uint8_t i = 0; i < ml.count; i++) {
         uint32_t child_idx = first_child + i;
@@ -574,7 +587,7 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
 
 
     // Direct Opening Book Mode: If enabled and in instant mode (BEST, GOOD, ALL), select directly (0 ms)!
-    if (st->use_book && (st->book_mode == BOOK_MODE_BEST || st->book_mode == BOOK_MODE_GOOD || st->book_mode == BOOK_MODE_ALL)) {
+    if (!st->use_guided_book && st->use_book && (st->book_mode != BOOK_MODE_OFF)) {
         Move book_move = opening_book_select_move(game, st->book_mode, st->book_temperature, &st->rng_state);
         if (!move_is_none(book_move)) {
             if (st->debug_log) {
@@ -656,10 +669,10 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
 
     // Ensure root children are generated with domain heuristic priors, book priors, and tablebase proof status
     if (s_node_pool[st->root_idx].first_child_idx == UINT32_MAX) {
-        puct_expand_node(st->root_idx, &root_compact, &search_hist, st->temperature, st->use_book, st->use_db, &st->tt, st->search_epoch, 1);
+        puct_expand_node(st->root_idx, &root_compact, &search_hist, st->temperature, st->use_guided_book, st->lambda_book, st->use_db, &st->tt, st->search_epoch, 1);
 
-        // Root Tree Warm-Starting from Opening Book Metadata
-        if (st->use_book) {
+        // Root Tree Warm-Starting from Opening Book Metadata when guided book is active
+        if (st->use_guided_book) {
             BookMoveList root_book_moves;
             if (opening_book_probe_compact(&root_compact, &root_book_moves) && root_book_moves.count > 0) {
                 uint32_t fc = s_node_pool[st->root_idx].first_child_idx;
@@ -746,7 +759,7 @@ Move engine_mcts_puct_get_move(void *state, const GameState *game) {
         // 2. EXPANSION (if reached node was previously visited, not expanded yet, and not terminal)
         if (!curr_state.is_game_over && path_len < MAX_TREE_DEPTH - 2) {
             if (s_node_pool[curr_idx].first_child_idx == UINT32_MAX) {
-                if (puct_expand_node(curr_idx, &curr_state, &search_hist, temperature, st->use_book, st->use_db, &st->tt, st->search_epoch, (uint16_t)path_len)) {
+                if (puct_expand_node(curr_idx, &curr_state, &search_hist, temperature, st->use_guided_book, st->lambda_book, st->use_db, &st->tt, st->search_epoch, (uint16_t)path_len)) {
                     // Pick top child by PUCT/prior to step into
                     uint32_t best_child = puct_select_child(curr_idx, c_puct);
                     if (best_child != UINT32_MAX) {

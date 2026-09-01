@@ -101,6 +101,9 @@ typedef struct {
     int        game_index;
     EngineType white_engine;
     EngineType black_engine;
+    bool       a_is_white;
+    char       white_name[64];
+    char       black_name[64];
     bool       is_draw;
     Player     winner;
     char       reason[64];
@@ -316,8 +319,10 @@ static void print_help(const char *prog_name) {
     printf("  --black=<engine>      Black engine: ucb1, puct, checkerboard, kingsrow, random (default: puct)\n");
     printf("  --white-book / --white-no-book Enable/disable Opening Book for White engine\n");
     printf("  --black-book / --black-no-book Enable/disable Opening Book for Black engine\n");
-    printf("  --white-book-mode=<mode> Opening book mode for White (best, good, all, puct_guided, off)\n");
-    printf("  --black-book-mode=<mode> Opening book mode for Black (best, good, all, puct_guided, off)\n");
+    printf("  --white-db / --white-no-db     Enable/disable WLD tablebase for White engine\n");
+    printf("  --black-db / --black-no-db     Enable/disable WLD tablebase for Black engine\n");
+    printf("  --white-book-mode=<mode> Opening book mode for White (best, good, all, off)\n");
+    printf("  --black-book-mode=<mode> Opening book mode for Black (best, good, all, off)\n");
     printf("  --engines=<list>      Comma-separated engines for tournament, or 'all'\n");
     printf("                        Example: --engines=ucb1,puct,checkerboard,random\n");
     printf("  --time=<seconds>, -T  Time budget per move in seconds (default: 1.0 for match, 0.2 for tournament/tuning)\n");
@@ -463,6 +468,12 @@ static bool parse_cli_args(int argc, char **argv, CliConfig *cfg) {
             cfg->has_white_book_override = true;
             cfg->white_book_mode = m;
             cfg->white_use_book = (m != BOOK_MODE_OFF);
+        } else if (strcmp(arg, "--white-db") == 0) {
+            cfg->has_white_db_override = true;
+            cfg->white_use_db = true;
+        } else if (strcmp(arg, "--white-no-db") == 0) {
+            cfg->has_white_db_override = true;
+            cfg->white_use_db = false;
         } else if (strncmp(arg, "--black=", 8) == 0) {
             EngineType t = parse_engine_name(arg + 8);
             if (t == ENGINE_TYPE_COUNT) {
@@ -483,6 +494,12 @@ static bool parse_cli_args(int argc, char **argv, CliConfig *cfg) {
             cfg->has_black_book_override = true;
             cfg->black_book_mode = m;
             cfg->black_use_book = (m != BOOK_MODE_OFF);
+        } else if (strcmp(arg, "--black-db") == 0) {
+            cfg->has_black_db_override = true;
+            cfg->black_use_db = true;
+        } else if (strcmp(arg, "--black-no-db") == 0) {
+            cfg->has_black_db_override = true;
+            cfg->black_use_db = false;
         } else if (strncmp(arg, "--engines=", 10) == 0) {
             const char *eng_str = arg + 10;
             if (strcasecmp(eng_str, "all") == 0) {
@@ -695,6 +712,7 @@ static bool parse_cli_args(int argc, char **argv, CliConfig *cfg) {
 }
 
 static GameRecord play_single_game(int game_index, EngineType white_type, EngineType black_type,
+                                   bool a_is_white,
                                    const CliConfig *cfg, int thread_id, int total_threads,
                                    int total_games, int *shared_completed_count,
                                    double tournament_start_time,
@@ -705,6 +723,7 @@ static GameRecord play_single_game(int game_index, EngineType white_type, Engine
     record.game_index = game_index;
     record.white_engine = white_type;
     record.black_engine = black_type;
+    record.a_is_white = a_is_white;
 
     ActiveThreadStatus *my_status = (all_thread_statuses && thread_id >= 0) ? &all_thread_statuses[thread_id] : NULL;
 
@@ -736,29 +755,55 @@ static GameRecord play_single_game(int game_index, EngineType white_type, Engine
     EngineConfig white_cfg = cfg->engine_config;
     EngineConfig black_cfg = cfg->engine_config;
 
-    // Apply player-specific opening book overrides if configured
-    if (cfg->has_white_book_override) {
-        if (white_type == cfg->white_engine) {
+    // Apply Player 1 (Engine A / --white) vs Player 2 (Engine B / --black) overrides
+    if (a_is_white) {
+        if (cfg->has_white_book_override) {
             white_cfg.mcts_use_book = cfg->white_use_book;
             white_cfg.puct_use_book = cfg->white_use_book;
             white_cfg.book_mode = cfg->white_book_mode;
-        } else if (black_type == cfg->white_engine) {
-            black_cfg.mcts_use_book = cfg->white_use_book;
-            black_cfg.puct_use_book = cfg->white_use_book;
-            black_cfg.book_mode = cfg->white_book_mode;
         }
-    }
-    if (cfg->has_black_book_override) {
-        if (black_type == cfg->black_engine) {
+        if (cfg->has_white_db_override) {
+            white_cfg.mcts_use_db = cfg->white_use_db;
+            white_cfg.puct_use_db = cfg->white_use_db;
+        }
+        if (cfg->has_black_book_override) {
             black_cfg.mcts_use_book = cfg->black_use_book;
             black_cfg.puct_use_book = cfg->black_use_book;
             black_cfg.book_mode = cfg->black_book_mode;
-        } else if (white_type == cfg->black_engine) {
+        }
+        if (cfg->has_black_db_override) {
+            black_cfg.mcts_use_db = cfg->black_use_db;
+            black_cfg.puct_use_db = cfg->black_use_db;
+        }
+    } else {
+        if (cfg->has_black_book_override) {
             white_cfg.mcts_use_book = cfg->black_use_book;
             white_cfg.puct_use_book = cfg->black_use_book;
             white_cfg.book_mode = cfg->black_book_mode;
         }
+        if (cfg->has_black_db_override) {
+            white_cfg.mcts_use_db = cfg->black_use_db;
+            white_cfg.puct_use_db = cfg->black_use_db;
+        }
+        if (cfg->has_white_book_override) {
+            black_cfg.mcts_use_book = cfg->white_use_book;
+            black_cfg.puct_use_book = cfg->white_use_book;
+            black_cfg.book_mode = cfg->white_book_mode;
+        }
+        if (cfg->has_white_db_override) {
+            black_cfg.mcts_use_db = cfg->white_use_db;
+            black_cfg.puct_use_db = cfg->white_use_db;
+        }
     }
+
+    snprintf(record.white_name, sizeof(record.white_name), "%s%s",
+             engine_get_type_name(white_type),
+             (white_type == ENGINE_TYPE_MCTS_UCB1 || white_type == ENGINE_TYPE_MCTS_PUCT) ?
+             (white_cfg.mcts_use_db || white_cfg.puct_use_db ? " (DB)" : " (No-DB)") : "");
+    snprintf(record.black_name, sizeof(record.black_name), "%s%s",
+             engine_get_type_name(black_type),
+             (black_type == ENGINE_TYPE_MCTS_UCB1 || black_type == ENGINE_TYPE_MCTS_PUCT) ?
+             (black_cfg.mcts_use_db || black_cfg.puct_use_db ? " (DB)" : " (No-DB)") : "");
 
     double w_time = (cfg->white_time_budget > 0.0) ? cfg->white_time_budget : cfg->time_budget;
     double b_time = (cfg->black_time_budget > 0.0) ? cfg->black_time_budget : cfg->time_budget;
@@ -882,12 +927,14 @@ static void write_game_record_csv_row(FILE *f, const GameRecord *r, double time_
     double w_avg_ms = (r->white_move_count > 0) ? (r->white_total_time / r->white_move_count) * 1000.0 : 0.0;
     double b_avg_ms = (r->black_move_count > 0) ? (r->black_total_time / r->black_move_count) * 1000.0 : 0.0;
     const char *win_color = r->is_draw ? "Draw" : (r->winner == PLAYER_WHITE ? "White" : "Black");
-    const char *win_eng = r->is_draw ? "Draw" : (r->winner == PLAYER_WHITE ? engine_get_type_name(r->white_engine) : engine_get_type_name(r->black_engine));
+    const char *w_name = (r->white_name[0] != '\0') ? r->white_name : engine_get_type_name(r->white_engine);
+    const char *b_name = (r->black_name[0] != '\0') ? r->black_name : engine_get_type_name(r->black_engine);
+    const char *win_eng = r->is_draw ? "Draw" : (r->winner == PLAYER_WHITE ? w_name : b_name);
 
     fprintf(f, "%d,%s,%s,%.3f,%s,%s,%d,\"%s\",%d,%.2f,%.2f,%.3f,%d,%d\n",
             r->game_index,
-            engine_get_type_name(r->white_engine),
-            engine_get_type_name(r->black_engine),
+            w_name,
+            b_name,
             time_budget,
             win_color,
             win_eng,
@@ -983,6 +1030,8 @@ static int load_existing_csv_records(const char *csv_path, GameRecord *records, 
         rec->game_index = game_id;
         rec->white_engine = parse_engine_name(w_eng_str);
         rec->black_engine = parse_engine_name(b_eng_str);
+        strncpy(rec->white_name, w_eng_str, sizeof(rec->white_name)-1);
+        strncpy(rec->black_name, b_eng_str, sizeof(rec->black_name)-1);
         rec->is_draw = (is_draw != 0);
         rec->winner = (strcmp(win_color, "White") == 0) ? PLAYER_WHITE : PLAYER_BLACK;
         strncpy(rec->reason, reason, sizeof(rec->reason)-1);
@@ -1046,6 +1095,7 @@ static void *worker_thread_func(void *arg) {
 
         const GameJob *job = &ctx->jobs[job_idx];
         GameRecord rec = play_single_game(job->game_index, job->white_engine, job->black_engine,
+                                          job->a_is_white,
                                           ctx->cfg, ctx->thread_id, ctx->total_threads,
                                           ctx->total_jobs, ctx->jobs_completed,
                                           ctx->tournament_start_time,
@@ -1134,6 +1184,7 @@ static int run_match_mode(const CliConfig *cfg) {
     } else {
         for (int i = 0; i < num_games; i++) {
             records[i] = play_single_game(jobs[i].game_index, jobs[i].white_engine, jobs[i].black_engine,
+                                          jobs[i].a_is_white,
                                           cfg, 0, 1, num_games, &jobs_completed,
                                           match_start, thread_statuses, &mutex);
         }
@@ -1145,8 +1196,8 @@ static int run_match_mode(const CliConfig *cfg) {
     double match_duration = cli_get_time() - match_start;
 
     // Aggregate statistics
-    int white_wins = 0;
-    int black_wins = 0;
+    int p1_wins = 0;
+    int p2_wins = 0;
     int draws = 0;
     double total_plies = 0;
 
@@ -1154,29 +1205,38 @@ static int run_match_mode(const CliConfig *cfg) {
         if (records[i].is_draw) {
             draws++;
         } else {
-            EngineType winner_engine = (records[i].winner == PLAYER_WHITE) ? records[i].white_engine : records[i].black_engine;
-            if (winner_engine == cfg->white_engine) {
-                white_wins++;
+            bool p1_won = (records[i].a_is_white && records[i].winner == PLAYER_WHITE) ||
+                          (!records[i].a_is_white && records[i].winner == PLAYER_BLACK);
+            if (p1_won) {
+                p1_wins++;
             } else {
-                black_wins++;
+                p2_wins++;
             }
         }
         total_plies += records[i].plies;
     }
 
+    char p1_label[64], p2_label[64];
+    snprintf(p1_label, sizeof(p1_label), "%s%s",
+             engine_get_type_name(cfg->white_engine),
+             cfg->has_white_db_override ? (cfg->white_use_db ? " (WLD DB ON)" : " (No DB)") : "");
+    snprintf(p2_label, sizeof(p2_label), "%s%s",
+             engine_get_type_name(cfg->black_engine),
+             cfg->has_black_db_override ? (cfg->black_use_db ? " (WLD DB ON)" : " (No DB)") : "");
+
     // Summary Table Output
     printf("\n+----------------------------------------------------------------------------+\n");
     printf("| MATCH SUMMARY RESULTS                                                      |\n");
     printf("+----------------------------------------------------------------------------+\n");
-    printf("  Engine 1 (%s): %d wins (%5.1f%%)\n",
-           engine_get_type_name(cfg->white_engine), white_wins, ((float)white_wins / num_games) * 100.0f);
-    printf("  Engine 2 (%s): %d wins (%5.1f%%)\n",
-           engine_get_type_name(cfg->black_engine), black_wins, ((float)black_wins / num_games) * 100.0f);
-    printf("  Draws:             %d      (%5.1f%%)\n",
+    printf("  Player 1 (%s): %d wins (%5.1f%%)\n",
+           p1_label, p1_wins, ((float)p1_wins / num_games) * 100.0f);
+    printf("  Player 2 (%s): %d wins (%5.1f%%)\n",
+           p2_label, p2_wins, ((float)p2_wins / num_games) * 100.0f);
+    printf("  Draws:                 %d      (%5.1f%%)\n",
            draws, ((float)draws / num_games) * 100.0f);
-    printf("  Total Games:       %d\n", num_games);
-    printf("  Average Plies:     %.1f plies/game\n", total_plies / num_games);
-    printf("  Total Duration:    %.2f seconds (%.2f s/game across %d threads)\n", match_duration, match_duration / num_games, num_threads);
+    printf("  Total Games:           %d\n", num_games);
+    printf("  Average Plies:         %.1f plies/game\n", total_plies / num_games);
+    printf("  Total Duration:        %.2f seconds (%.2f s/game across %d threads)\n", match_duration, match_duration / num_games, num_threads);
     printf("+----------------------------------------------------------------------------+\n\n");
 
     // Game by game breakdown
@@ -1185,8 +1245,8 @@ static int run_match_mode(const CliConfig *cfg) {
     printf("----+-------------------+-------------------+-------------------+-------+----------+--------------------\n");
     for (int i = 0; i < num_games; i++) {
         const GameRecord *r = &records[i];
-        const char *w_name = engine_get_type_name(r->white_engine);
-        const char *b_name = engine_get_type_name(r->black_engine);
+        const char *w_name = (r->white_name[0] != '\0') ? r->white_name : engine_get_type_name(r->white_engine);
+        const char *b_name = (r->black_name[0] != '\0') ? r->black_name : engine_get_type_name(r->black_engine);
         const char *res_str = r->is_draw ? "Draw" : (r->winner == PLAYER_WHITE ? w_name : b_name);
 
         printf("%3d | %-17s | %-17s | %-17s | %5d | %7.2fs | %s\n",
@@ -1337,6 +1397,7 @@ static int run_tournament_mode(const CliConfig *cfg) {
         for (int i = 0; i < total_games; i++) {
             if (job_completed_flags[i]) continue;
             all_records[i] = play_single_game(jobs[i].game_index, jobs[i].white_engine, jobs[i].black_engine,
+                                              jobs[i].a_is_white,
                                               cfg, 0, 1, total_games, &jobs_completed,
                                               tourney_start, thread_statuses, &mutex);
             job_completed_flags[i] = true;

@@ -28,6 +28,8 @@ static double get_time_sec(void) {
 typedef struct {
     const char *series_name;
     EngineType engine_a_type;
+    bool a_use_guided_book;
+    float a_lambda_book;
     bool a_use_book;
     BookPlayMode a_book_mode;
     EngineType engine_b_type;
@@ -87,6 +89,7 @@ static void run_experiment(const MatchExperiment *exp, MatchStats *out_stats) {
         if (exp->engine_a_type == ENGINE_TYPE_MCTS_PUCT) {
             engine_mcts_puct_init(&eng_a);
             engine_mcts_puct_set_time_budget(eng_a, exp->time_per_move);
+            engine_mcts_puct_set_guided_book(eng_a, exp->a_use_guided_book, exp->a_lambda_book);
             engine_mcts_puct_set_use_book(eng_a, exp->a_use_book);
             engine_mcts_puct_set_book_mode(eng_a, exp->a_book_mode);
         } else if (exp->engine_a_type == ENGINE_TYPE_MCTS_UCB1) {
@@ -230,10 +233,12 @@ int main(void) {
     };
 
     MatchExperiment exp2 = {
-        .series_name = "2. MCTS PUCT with Opening Book (PUCT_GUIDED Mode) vs CheckerBoard",
+        .series_name = "2. MCTS PUCT with Opening Book (Guided Blending) vs CheckerBoard",
         .engine_a_type = ENGINE_TYPE_MCTS_PUCT,
-        .a_use_book = true,
-        .a_book_mode = BOOK_MODE_PUCT_GUIDED,
+        .a_use_guided_book = true,
+        .a_lambda_book = 0.75f,
+        .a_use_book = false,
+        .a_book_mode = BOOK_MODE_OFF,
         .engine_b_type = ENGINE_TYPE_CHECKERBOARD,
         .total_games = 12,
         .time_per_move = 0.08

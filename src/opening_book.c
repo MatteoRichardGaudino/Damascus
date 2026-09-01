@@ -441,7 +441,6 @@ const char *opening_book_mode_get_name(BookPlayMode mode) {
         case BOOK_MODE_BEST:        return "MIGLIORI (BEST)";
         case BOOK_MODE_GOOD:        return "VARIATE (GOOD)";
         case BOOK_MODE_ALL:         return "TUTTE LE MOSSE (ALL)";
-        case BOOK_MODE_PUCT_GUIDED: return "PUCT GUIDATO";
         case BOOK_MODE_OFF:
         default:                    return "DISATTIVATO";
     }
@@ -452,7 +451,6 @@ const char *opening_book_mode_get_cli_name(BookPlayMode mode) {
         case BOOK_MODE_BEST:        return "best";
         case BOOK_MODE_GOOD:        return "good";
         case BOOK_MODE_ALL:         return "all";
-        case BOOK_MODE_PUCT_GUIDED: return "puct_guided";
         case BOOK_MODE_OFF:
         default:                    return "off";
     }
@@ -468,9 +466,6 @@ BookPlayMode opening_book_mode_parse(const char *name) {
     }
     if (strcasecmp(name, "all") == 0 || strcasecmp(name, "tutte") == 0 || strcasecmp(name, "3") == 0) {
         return BOOK_MODE_ALL;
-    }
-    if (strcasecmp(name, "puct_guided") == 0 || strcasecmp(name, "guided") == 0 || strcasecmp(name, "puct") == 0 || strcasecmp(name, "4") == 0) {
-        return BOOK_MODE_PUCT_GUIDED;
     }
     if (strcasecmp(name, "off") == 0 || strcasecmp(name, "none") == 0 || strcasecmp(name, "disattivato") == 0 || strcasecmp(name, "0") == 0) {
         return BOOK_MODE_OFF;
@@ -620,7 +615,7 @@ bool opening_book_probe(const GameState *game, BookMoveList *out_moves) {
 
 // Select a move from opening book according to mode and temperature
 Move opening_book_select_move(const GameState *game, BookPlayMode mode, float temperature, uint32_t *rng_state) {
-    if (!game || mode == BOOK_MODE_OFF || mode == BOOK_MODE_PUCT_GUIDED) {
+    if (!game || mode == BOOK_MODE_OFF) {
         return MOVE_NONE;
     }
 

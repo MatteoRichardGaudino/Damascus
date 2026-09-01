@@ -1,0 +1,101 @@
+game_id,white_engine,black_engine,time_budget,winner_color,winner_engine,is_draw,reason,plies,white_avg_ms,black_avg_ms,duration_sec,white_pieces,black_pieces
+1,MCTS_UCB1,MCTS_PUCT,3.0,Draw,Draw,1,Max Plies Limit (250),250,2590.04,1737.33,536.607,2,2
+2,MCTS_PUCT,MCTS_UCB1,3.0,Black,MCTS_UCB1,0,Elimination / Block,118,1921.58,2159.39,236.702,0,3
+3,MCTS_UCB1,MCTS_PUCT,3.0,Draw,Draw,1,Max Plies Limit (250),250,2560.38,1580.02,513.424,4,2
+4,MCTS_PUCT,MCTS_UCB1,3.0,Black,MCTS_UCB1,0,Elimination / Block,200,2044.7,2414.21,441.443,0,2
+5,MCTS_UCB1,MCTS_PUCT,3.0,Draw,Draw,1,Max Plies Limit (250),250,2275.73,1867.33,513.752,5,4
+6,MCTS_PUCT,MCTS_UCB1,3.0,Draw,Draw,1,Max Plies Limit (250),250,1689.11,2318.05,496.901,2,3
+7,MCTS_UCB1,MCTS_PUCT,3.0,White,MCTS_UCB1,0,Elimination / Block,225,2594.4,1770.84,487.148,3,0
+8,MCTS_PUCT,MCTS_UCB1,3.0,Draw,Draw,1,Max Plies Limit (250),250,1797.16,2472.81,529.488,1,1
+9,MCTS_UCB1,MCTS_PUCT,3.0,Black,MCTS_PUCT,0,Elimination / Block,140,2427.98,2145.63,315.586,0,2
+10,MCTS_PUCT,MCTS_UCB1,3.0,Draw,Draw,1,3-Fold Repetition,150,1732.23,2325.18,300.257,2,1
+11,MCTS_UCB1,CheckerBoard,3.0,White,MCTS_UCB1,0,Elimination / Block,59,2066.89,1925.81,113.866,3,0
+12,CheckerBoard,MCTS_UCB1,3.0,Black,MCTS_UCB1,0,Elimination / Block,234,2686.71,2510.0,602.83,0,2
+13,MCTS_UCB1,CheckerBoard,3.0,White,MCTS_UCB1,0,Elimination / Block,75,1779.01,1798.08,130.558,4,0
+14,CheckerBoard,MCTS_UCB1,3.0,Draw,Draw,1,3-Fold Repetition,150,2752.64,2423.89,383.072,5,3
+15,MCTS_UCB1,CheckerBoard,3.0,Draw,Draw,1,3-Fold Repetition,145,2389.46,2616.49,357.819,2,5
+16,CheckerBoard,MCTS_UCB1,3.0,Draw,Draw,1,Max Plies Limit (250),250,2850.27,2479.11,660.856,6,6
+17,MCTS_UCB1,CheckerBoard,3.0,Draw,Draw,1,Max Plies Limit (250),250,2659.3,2875.53,686.333,3,3
+18,CheckerBoard,MCTS_UCB1,3.0,Black,MCTS_UCB1,0,Elimination / Block,64,1917.26,1797.2,115.151,0,4
+19,MCTS_UCB1,CheckerBoard,3.0,Draw,Draw,1,Max Plies Limit (250),250,2429.5,2876.03,657.903,4,4
+20,CheckerBoard,MCTS_UCB1,3.0,Black,MCTS_UCB1,0,Elimination / Block,48,1824.35,1809.51,83.582,0,5
+21,MCTS_PUCT,CheckerBoard,3.0,White,MCTS_PUCT,0,Elimination / Block,147,1540.44,2578.18,298.089,2,0
+22,CheckerBoard,MCTS_PUCT,3.0,Draw,Draw,1,3-Fold Repetition,150,2708.92,1677.27,324.587,3,2
+23,MCTS_PUCT,CheckerBoard,3.0,Black,CheckerBoard,0,Elimination / Block,80,2417.32,2012.26,172.757,3,7
+24,CheckerBoard,MCTS_PUCT,3.0,Black,MCTS_PUCT,0,Elimination / Block,132,2579.24,1611.25,272.389,0,3
+25,MCTS_PUCT,CheckerBoard,3.0,Draw,Draw,1,3-Fold Repetition,119,1695.84,2580.61,249.736,3,4
+26,CheckerBoard,MCTS_PUCT,3.0,Draw,Draw,1,3-Fold Repetition,134,2630.72,1856.49,296.163,5,3
+27,MCTS_PUCT,CheckerBoard,3.0,White,MCTS_PUCT,0,Elimination / Block,49,1679.83,2085.81,88.295,8,0
+28,CheckerBoard,MCTS_PUCT,3.0,Draw,Draw,1,3-Fold Repetition,170,2815.13,1715.59,380.59,5,4
+29,MCTS_PUCT,CheckerBoard,3.0,Draw,Draw,1,3-Fold Repetition,207,2118.64,2700.1,493.64,1,1
+30,CheckerBoard,MCTS_PUCT,3.0,Black,MCTS_PUCT,0,Elimination / Block,58,1925.25,1598.7,98.673,0,5
+31,MCTS_UCB1,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,72,2372.85,2130.56,157.624,0,2
+32,Kingsrow,MCTS_UCB1,3.0,White,Kingsrow,0,Elimination / Block,89,2705.06,2380.99,221.41,2,0
+33,MCTS_UCB1,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,86,2486.64,2835.97,223.555,0,4
+34,Kingsrow,MCTS_UCB1,3.0,White,Kingsrow,0,Elimination / Block,99,2537.05,2246.51,232.153,3,0
+35,MCTS_UCB1,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,140,2352.31,2936.48,364.934,0,2
+36,Kingsrow,MCTS_UCB1,3.0,White,Kingsrow,0,Elimination / Block,123,2898.34,2216.29,309.783,1,0
+37,MCTS_UCB1,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,100,2161.81,2823.57,244.289,1,3
+38,Kingsrow,MCTS_UCB1,3.0,White,Kingsrow,0,Elimination / Block,103,2453.97,2205.61,235.438,2,0
+39,MCTS_UCB1,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,108,2130.26,1937.4,215.591,0,2
+40,Kingsrow,MCTS_UCB1,3.0,White,Kingsrow,0,Elimination / Block,103,2963.62,2163.02,259.3,2,0
+41,MCTS_PUCT,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,66,1761.33,2087.1,123.153,0,3
+42,Kingsrow,MCTS_PUCT,3.0,White,Kingsrow,0,Elimination / Block,75,2424.75,1827.42,155.507,1,1
+43,MCTS_PUCT,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,112,1840.93,2736.18,251.747,0,3
+44,Kingsrow,MCTS_PUCT,3.0,White,Kingsrow,0,Elimination / Block,143,2458.25,1600.68,286.592,2,0
+45,MCTS_PUCT,Kingsrow,3.0,Draw,Draw,1,3-Fold Repetition,232,2010.51,550.2,294.496,1,1
+46,Kingsrow,MCTS_PUCT,3.0,White,Kingsrow,0,Elimination / Block,81,2470.39,2063.05,179.28,4,1
+47,MCTS_PUCT,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,100,1844.03,1967.25,186.759,0,2
+48,Kingsrow,MCTS_PUCT,3.0,White,Kingsrow,0,Elimination / Block,107,2471.63,1915.61,230.614,2,0
+49,MCTS_PUCT,Kingsrow,3.0,Draw,Draw,1,Max Plies Limit (250),250,1809.67,458.07,281.211,1,1
+50,Kingsrow,MCTS_PUCT,3.0,Draw,Draw,1,Max Plies Limit (250),250,386.81,1515.38,235.884,2,2
+51,MCTS_UCB1,Random,3.0,White,MCTS_UCB1,0,Elimination / Block,39,1702.14,0.0,32.343,9,0
+52,Random,MCTS_UCB1,3.0,Black,MCTS_UCB1,0,Elimination / Block,38,0.0,1368.72,24.639,0,7
+53,MCTS_UCB1,Random,3.0,White,MCTS_UCB1,0,Elimination / Block,35,1517.59,0.0,25.803,11,0
+54,Random,MCTS_UCB1,3.0,Black,MCTS_UCB1,0,Elimination / Block,40,0.0,1481.34,28.148,0,7
+55,MCTS_UCB1,Random,3.0,White,MCTS_UCB1,0,Elimination / Block,41,1308.92,0.0,26.182,8,1
+56,Random,MCTS_UCB1,3.0,Black,MCTS_UCB1,0,Elimination / Block,40,0.0,1323.47,25.149,0,9
+57,MCTS_UCB1,Random,3.0,White,MCTS_UCB1,0,Elimination / Block,41,1625.17,0.0,32.506,7,0
+58,Random,MCTS_UCB1,3.0,Black,MCTS_UCB1,0,Elimination / Block,42,0.0,1486.66,29.737,0,6
+59,MCTS_UCB1,Random,3.0,White,MCTS_UCB1,0,Elimination / Block,37,1604.29,0.0,28.879,7,2
+60,Random,MCTS_UCB1,3.0,Black,MCTS_UCB1,0,Elimination / Block,46,0.0,1551.04,34.124,0,5
+61,MCTS_PUCT,Random,3.0,White,MCTS_PUCT,0,Elimination / Block,45,1682.26,0.0,37.014,5,0
+62,Random,MCTS_PUCT,3.0,Black,MCTS_PUCT,0,Elimination / Block,40,0.0,1441.95,27.399,0,6
+63,MCTS_PUCT,Random,3.0,White,MCTS_PUCT,0,Elimination / Block,33,1343.52,0.0,21.5,8,0
+64,Random,MCTS_PUCT,3.0,Black,MCTS_PUCT,0,Elimination / Block,42,0.0,1155.62,23.12,0,7
+65,MCTS_PUCT,Random,3.0,White,MCTS_PUCT,0,Elimination / Block,39,1238.64,0.0,23.539,8,0
+66,Random,MCTS_PUCT,3.0,Black,MCTS_PUCT,0,Elimination / Block,44,0.0,1630.28,34.24,0,7
+67,MCTS_PUCT,Random,3.0,White,MCTS_PUCT,0,Elimination / Block,41,1777.0,0.0,35.542,5,0
+68,Random,MCTS_PUCT,3.0,Black,MCTS_PUCT,0,Elimination / Block,42,0.0,1359.28,27.192,0,9
+69,MCTS_PUCT,Random,3.0,White,MCTS_PUCT,0,Elimination / Block,41,1488.32,0.0,29.769,9,0
+70,Random,MCTS_PUCT,3.0,Black,MCTS_PUCT,0,Elimination / Block,48,0.0,1472.47,33.869,0,6
+71,CheckerBoard,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,66,1789.4,1860.9,116.819,0,2
+72,Kingsrow,CheckerBoard,3.0,White,Kingsrow,0,Elimination / Block,53,1988.61,1702.52,94.274,5,0
+73,CheckerBoard,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,82,1870.28,2333.44,168.161,0,1
+74,Kingsrow,CheckerBoard,3.0,White,Kingsrow,0,Elimination / Block,91,2217.57,2070.64,190.924,2,0
+75,CheckerBoard,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,104,2412.34,2204.39,235.469,0,2
+76,Kingsrow,CheckerBoard,3.0,White,Kingsrow,0,Elimination / Block,93,2570.1,2127.91,214.001,2,0
+77,CheckerBoard,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,52,1789.72,2371.49,104.038,0,4
+78,Kingsrow,CheckerBoard,3.0,White,Kingsrow,0,Elimination / Block,95,2459.03,2319.22,222.272,3,0
+79,CheckerBoard,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,68,1994.21,1861.56,127.25,0,3
+80,Kingsrow,CheckerBoard,3.0,White,Kingsrow,0,Elimination / Block,105,2853.7,2346.19,268.061,2,0
+81,CheckerBoard,Random,3.0,White,CheckerBoard,0,Elimination / Block,31,999.58,0.0,15.022,10,0
+82,Random,CheckerBoard,3.0,Black,CheckerBoard,0,Elimination / Block,38,0.0,1504.98,27.12,1,10
+83,CheckerBoard,Random,3.0,White,CheckerBoard,0,Elimination / Block,33,1327.44,0.0,21.267,10,0
+84,Random,CheckerBoard,3.0,Black,CheckerBoard,0,Elimination / Block,46,0.0,1499.03,33.043,2,6
+85,CheckerBoard,Random,3.0,White,CheckerBoard,0,Elimination / Block,41,964.84,0.0,19.343,5,1
+86,Random,CheckerBoard,3.0,Black,CheckerBoard,0,Elimination / Block,36,0.0,1429.81,24.353,0,8
+87,CheckerBoard,Random,3.0,White,CheckerBoard,0,Elimination / Block,47,1858.1,0.0,42.774,7,0
+88,Random,CheckerBoard,3.0,Black,CheckerBoard,0,Elimination / Block,32,0.0,1217.18,18.315,1,9
+89,CheckerBoard,Random,3.0,White,CheckerBoard,0,Elimination / Block,41,1498.23,0.0,30.011,10,1
+90,Random,CheckerBoard,3.0,Black,CheckerBoard,0,Elimination / Block,42,0.0,1199.42,24.048,1,8
+91,Kingsrow,Random,3.0,White,Kingsrow,0,Elimination / Block,49,1896.47,0.0,45.528,5,0
+92,Random,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,34,0.0,2235.37,35.782,1,8
+93,Kingsrow,Random,3.0,White,Kingsrow,0,Elimination / Block,47,2049.06,0.0,47.134,6,0
+94,Random,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,42,0.0,1963.7,39.279,0,9
+95,Kingsrow,Random,3.0,White,Kingsrow,0,Elimination / Block,39,1872.77,0.0,35.589,10,1
+96,Random,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,34,0.0,1513.83,24.226,0,9
+97,Kingsrow,Random,3.0,White,Kingsrow,0,Elimination / Block,39,1911.04,0.0,36.323,9,0
+98,Random,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,40,0.0,1558.86,29.622,0,8
+99,Kingsrow,Random,3.0,White,Kingsrow,0,Elimination / Block,39,1748.85,0.0,33.232,9,0
+100,Random,Kingsrow,3.0,Black,Kingsrow,0,Elimination / Block,48,0.0,1807.56,41.578,0,6

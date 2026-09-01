@@ -30,6 +30,8 @@ typedef struct {
     float  puct_rollout_epsilon;   // Biased rollout exploration rate (e.g. 0.05, 0.15, 0.30, 1.0)
     bool   puct_use_db;            // Enable/disable instant WLD tablebase mode (true/false)
     bool   puct_use_book;          // Enable/disable opening book for MCTS PUCT (true/false)
+    bool   puct_use_guided_book;   // Enable/disable PUCT-only guided prior blending (true/false)
+    float  puct_lambda_book;       // Prior blending parameter lambda in [0.0, 1.0] (e.g. 0.75)
     bool   puct_debug_log;         // Enable/disable verbose console debug logging for PUCT
 
     // Opening Book parameters

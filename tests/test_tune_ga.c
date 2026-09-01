@@ -13,38 +13,65 @@ static void test_chromosome_initialization(void) {
     Chromosome c_puct;
     ga_chromosome_init_default(&c_puct, ENGINE_TYPE_MCTS_PUCT);
     assert(c_puct.target_engine == ENGINE_TYPE_MCTS_PUCT);
-    assert(fabsf(c_puct.puct_c_puct - 1.5f) < 1e-4f);
-    assert(fabsf(c_puct.puct_temperature - 1.0f) < 1e-4f);
-    assert(fabsf(c_puct.rollout_epsilon - 0.15f) < 1e-4f);
-    assert(c_puct.max_rollout_depth == 70);
-    assert(c_puct.use_book == true);
-    assert(c_puct.use_db == true);
+    assert(fabsf(c_puct.puct.c_puct - 2.5857f) < 1e-4f);
+    assert(fabsf(c_puct.puct.puct_temperature - 2.2048f) < 1e-4f);
+    assert(c_puct.puct.use_guided_book == true);
+    assert(fabsf(c_puct.puct.lambda_book - 0.0791f) < 1e-4f);
+    assert(c_puct.puct.book_mode == BOOK_MODE_OFF);
+    assert(fabsf(c_puct.puct.book_temperature - 0.0f) < 1e-4f);
+    assert(fabsf(c_puct.rollout_epsilon - 0.3416f) < 1e-4f);
+    assert(c_puct.max_rollout_depth == 112);
+    assert(c_puct.use_db == false);
 
     Chromosome c_ucb1;
     ga_chromosome_init_default(&c_ucb1, ENGINE_TYPE_MCTS_UCB1);
     assert(c_ucb1.target_engine == ENGINE_TYPE_MCTS_UCB1);
-    assert(fabsf(c_ucb1.mcts_exploration - 1.41421356f) < 1e-4f);
-    assert(fabsf(c_ucb1.rollout_epsilon - 0.15f) < 1e-4f);
+    assert(fabsf(c_ucb1.ucb1.exploration_alpha - 0.6422f) < 1e-4f);
+    assert(c_ucb1.ucb1.book_mode == BOOK_MODE_GOOD);
+    assert(fabsf(c_ucb1.ucb1.book_temperature - 0.0500f) < 1e-4f);
+    assert(fabsf(c_ucb1.rollout_epsilon - 0.3128f) < 1e-4f);
+    assert(c_ucb1.max_rollout_depth == 51);
+    assert(c_ucb1.use_db == false);
 
     printf("  -> Baseline chromosome initialization: PASSED\n");
 }
 
-static void test_chromosome_randomization_and_clamping(void) {
-    printf("[2/5] Testing Chromosome Randomization & Clamping (1,000 samples)...\n");
+static void test_chromosome_randomization_and_sanitization(void) {
+    printf("[2/5] Testing Chromosome Randomization, Clamping & Sanitization (1,000 samples)...\n");
     uint32_t rng = 0xDEADBEEF;
 
     for (int i = 0; i < 1000; i++) {
         Chromosome c;
         ga_chromosome_randomize(&c, (i % 2 == 0) ? ENGINE_TYPE_MCTS_PUCT : ENGINE_TYPE_MCTS_UCB1, &rng);
         
-        assert(c.puct_c_puct >= 0.2f && c.puct_c_puct <= 5.0f);
-        assert(c.puct_temperature >= 0.05f && c.puct_temperature <= 3.0f);
-        assert(c.mcts_exploration >= 0.1f && c.mcts_exploration <= 4.0f);
-        assert(c.rollout_epsilon >= 0.01f && c.rollout_epsilon <= 0.90f);
-        assert(c.max_rollout_depth >= 10 && c.max_rollout_depth <= 200);
-        assert(c.book_temperature >= 0.05f && c.book_temperature <= 4.0f);
+        assert(c.rollout_epsilon >= 0.01f && c.rollout_epsilon <= 0.50f);
+        assert(c.max_rollout_depth >= 10 && c.max_rollout_depth <= 150);
+
+        if (c.target_engine == ENGINE_TYPE_MCTS_PUCT) {
+            assert(c.puct.c_puct >= 0.2f && c.puct.c_puct <= 5.0f);
+            assert(c.puct.puct_temperature >= 0.05f && c.puct.puct_temperature <= 3.0f);
+            if (c.puct.use_guided_book) {
+                assert(c.puct.lambda_book >= 0.0f && c.puct.lambda_book <= 1.0f);
+                assert(c.puct.book_mode == BOOK_MODE_OFF);
+                assert(c.puct.book_temperature == 0.0f);
+            } else {
+                assert(c.puct.lambda_book == 0.0f);
+                if (c.puct.book_mode == BOOK_MODE_OFF || c.puct.book_mode == BOOK_MODE_BEST) {
+                    assert(c.puct.book_temperature == 0.0f);
+                } else {
+                    assert(c.puct.book_temperature >= 0.05f && c.puct.book_temperature <= 4.0f);
+                }
+            }
+        } else {
+            assert(c.ucb1.exploration_alpha >= 0.1f && c.ucb1.exploration_alpha <= 4.0f);
+            if (c.ucb1.book_mode == BOOK_MODE_OFF || c.ucb1.book_mode == BOOK_MODE_BEST) {
+                assert(c.ucb1.book_temperature == 0.0f);
+            } else {
+                assert(c.ucb1.book_temperature >= 0.05f && c.ucb1.book_temperature <= 4.0f);
+            }
+        }
     }
-    printf("  -> Parameter bounds and clamping verification: PASSED\n");
+    printf("  -> Parameter bounds, clamping, and zero-ghost-gene sanitization: PASSED\n");
 }
 
 static void test_crossover_operator(void) {
@@ -53,14 +80,14 @@ static void test_crossover_operator(void) {
 
     Chromosome p1, p2, child1, child2;
     ga_chromosome_init_default(&p1, ENGINE_TYPE_MCTS_PUCT);
-    p1.puct_c_puct = 1.0f;
-    p1.puct_temperature = 0.5f;
+    p1.puct.c_puct = 1.0f;
+    p1.puct.puct_temperature = 0.5f;
     p1.rollout_epsilon = 0.10f;
     p1.max_rollout_depth = 50;
 
     ga_chromosome_init_default(&p2, ENGINE_TYPE_MCTS_PUCT);
-    p2.puct_c_puct = 3.0f;
-    p2.puct_temperature = 2.0f;
+    p2.puct.c_puct = 3.0f;
+    p2.puct.puct_temperature = 2.0f;
     p2.rollout_epsilon = 0.40f;
     p2.max_rollout_depth = 120;
 
@@ -68,8 +95,8 @@ static void test_crossover_operator(void) {
 
     assert(child1.target_engine == ENGINE_TYPE_MCTS_PUCT);
     assert(child2.target_engine == ENGINE_TYPE_MCTS_PUCT);
-    assert(child1.puct_c_puct >= 0.2f && child1.puct_c_puct <= 5.0f);
-    assert(child2.puct_c_puct >= 0.2f && child2.puct_c_puct <= 5.0f);
+    assert(child1.puct.c_puct >= 0.2f && child1.puct.c_puct <= 5.0f);
+    assert(child2.puct.c_puct >= 0.2f && child2.puct.c_puct <= 5.0f);
 
     printf("  -> Crossover inheritance and bound check: PASSED\n");
 }
@@ -85,12 +112,13 @@ static void test_mutation_operator(void) {
     ga_chromosome_mutate(&mutated, 1.0f, 0.20f, &rng);
 
     // Mutation with rate 1.0 must perturb parameters
-    bool changed = (mutated.puct_c_puct != orig.puct_c_puct) ||
-                   (mutated.puct_temperature != orig.puct_temperature) ||
+    bool changed = (mutated.puct.c_puct != orig.puct.c_puct) ||
+                   (mutated.puct.puct_temperature != orig.puct.puct_temperature) ||
                    (mutated.rollout_epsilon != orig.rollout_epsilon) ||
-                   (mutated.max_rollout_depth != orig.max_rollout_depth);
+                   (mutated.max_rollout_depth != orig.max_rollout_depth) ||
+                   (mutated.puct.lambda_book != orig.puct.lambda_book);
     assert(changed);
-    assert(mutated.puct_c_puct >= 0.2f && mutated.puct_c_puct <= 5.0f);
+    assert(mutated.puct.c_puct >= 0.2f && mutated.puct.c_puct <= 5.0f);
 
     printf("  -> Mutation perturbation: PASSED\n");
 }
@@ -130,7 +158,7 @@ int main(void) {
     printf("==============================================================================\n\n");
 
     test_chromosome_initialization();
-    test_chromosome_randomization_and_clamping();
+    test_chromosome_randomization_and_sanitization();
     test_crossover_operator();
     test_mutation_operator();
     test_mini_tuning_run();

@@ -54,6 +54,12 @@ typedef struct {
     bool       black_use_book;
     BookPlayMode black_book_mode;
 
+    // Player-specific WLD overrides (for match comparisons)
+    bool       has_white_db_override;
+    bool       white_use_db;
+    bool       has_black_db_override;
+    bool       black_use_db;
+
     // GA Tuning Options
     GAConfig   ga_config;
 
